@@ -1,225 +1,427 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Fate Dice Altar</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Slot Machine - Physics Particles</title>
 
 <style>
-    body {
-        margin: 0;
-        height: 100vh;
-        display: flex;
-        justify-content: center;
-        align-items: center;
+body {
+    background: #111;
+    color: white;
+    font-family: Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+}
 
-        /* dungeon / tavern ambience */
-        background: radial-gradient(circle at top, #2b2117, #070606);
-        font-family: "Georgia", serif;
-        color: #f4e7c9;
-    }
+.machine {
+    background: #222;
+    padding: 30px;
+    border-radius: 20px;
+    text-align: center;
+    box-shadow: 0 0 30px gold;
+    width: 420px;
+    position: relative;
+    overflow: hidden;
+}
 
-    .altar {
-        width: 380px;
-        padding: 28px;
-        text-align: center;
+h1 {
+    color: gold;
+    margin: 0 0 15px;
+}
 
-        /* stone altar look */
-        background: linear-gradient(145deg, #2c241a, #15110d);
-        border: 2px solid #6b5538;
-        border-radius: 18px;
+.slots {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin: 25px 0;
+}
 
-        box-shadow:
-            0 0 50px rgba(0,0,0,0.9),
-            inset 0 0 25px rgba(255, 200, 120, 0.05);
-    }
+.slot {
+    width: 85px;
+    height: 85px;
+    background: #333;
+    border: 3px solid gold;
+    border-radius: 12px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 42px;
+}
 
-    h1 {
-        font-size: 18px;
-        letter-spacing: 3px;
-        margin-bottom: 5px;
-        color: #e7d3a1;
-        text-transform: uppercase;
-    }
+.spinning {
+    filter: blur(1px);
+}
 
-    .subtitle {
-        font-size: 12px;
-        opacity: 0.7;
-        margin-bottom: 15px;
-        letter-spacing: 1px;
-    }
+button {
+    background: gold;
+    color: black;
+    border: none;
+    padding: 12px 20px;
+    margin: 4px;
+    font-weight: bold;
+    border-radius: 8px;
+    cursor: pointer;
+}
 
-    #number {
-        font-size: 86px;
-        margin: 20px 0;
-        color: #ffdca3;
-        text-shadow:
-            0 0 15px rgba(255, 220, 160, 0.3),
-            0 0 35px rgba(255, 170, 80, 0.15);
-        transition: transform 0.08s;
-    }
+button:disabled {
+    background: #666;
+}
 
-    .buttons {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 10px;
-        margin-top: 10px;
-    }
+#message {
+    margin-top: 15px;
+    min-height: 24px;
+}
 
-    button {
-        padding: 10px;
-        border-radius: 10px;
-
-        background: linear-gradient(#3a2e21, #241a12);
-        border: 1px solid #7a6242;
-
-        color: #f4e7c9;
-        font-weight: bold;
-        font-family: "Georgia", serif;
-
-        cursor: pointer;
-        transition: 0.2s;
-    }
-
-    button:hover:not(:disabled) {
-        transform: scale(1.05);
-        border-color: #d6b06a;
-        box-shadow: 0 0 12px rgba(255, 200, 120, 0.2);
-    }
-
-    button:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-    }
+canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+}
 </style>
 </head>
 
 <body>
 
-<div class="altar">
-    <h1>⚔️ FATE ALTAR</h1>
-    <div class="subtitle">The dice speak only truth</div>
+<div class="machine">
+    <h1>🎰 Physics Particle Slots 🎰</h1>
 
-    <div id="number">-</div>
+    <canvas id="fx" width="420" height="300"></canvas>
 
-    <div class="buttons">
-        <button onclick="roll(4)">d4</button>
-        <button onclick="roll(6)">d6</button>
-        <button onclick="roll(8)">d8</button>
-        <button onclick="roll(10)">d10</button>
-        <button onclick="roll(12)">d12</button>
-        <button onclick="roll(20)">d20</button>
+    <div class="slots">
+        <div class="slot" id="s1">❔</div>
+        <div class="slot" id="s2">❔</div>
+        <div class="slot" id="s3">❔</div>
     </div>
+
+    <button id="spinBtn">SPIN</button>
+
+    <p>Credits: <span id="credits">100</span></p>
+
+    <div>
+        <button onclick="setSkin('classic')">Classic</button>
+        <button onclick="setSkin('fire')">Fire 🔥</button>
+        <button onclick="setSkin('ice')">Ice ❄️</button>
+        <button onclick="setSkin('gem')">Gem 💎</button>
+        <button onclick="setSkin('spooky')">Spooky 👻</button>
+    </div>
+
+    <div id="message"></div>
 </div>
 
 <script>
-let audioCtx;
+/* ---------------- SKINS ---------------- */
 
-function initAudio() {
-    if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const skins = {
+    classic: ["🍒","🍋","⭐","💎","7️⃣"],
+    fire:    ["🔥","🌶️","⭐","💥","7️⃣"],
+    ice:     ["❄️","🧊","⭐","💎","7️⃣"],
+    gem:     ["💎","💎","⭐","💍","7️⃣"],
+    spooky:  ["👻","🕷️","🎃","💀","7️⃣"]
+};
+
+let currentSkin = "classic";
+
+/* ---------------- STATE ---------------- */
+
+let credits = 100;
+let spinning = false;
+
+/* ---------------- ELEMENTS ---------------- */
+
+const spinBtn = document.getElementById("spinBtn");
+const s1 = document.getElementById("s1");
+const s2 = document.getElementById("s2");
+const s3 = document.getElementById("s3");
+const creditsEl = document.getElementById("credits");
+const messageEl = document.getElementById("message");
+
+const canvas = document.getElementById("fx");
+const ctx = canvas.getContext("2d");
+
+let particles = [];
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+/* ---------------- AUDIO ---------------- */
+
+function tone(f,d,t="sine",v=0.08){
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+
+    o.type = t;
+    o.frequency.value = f;
+    g.gain.value = v;
+
+    o.connect(g);
+    g.connect(audioCtx.destination);
+
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + d);
+    o.stop(audioCtx.currentTime + d);
+}
+
+function spinSound(){
+    let i = 0;
+    const r = setInterval(()=>{
+        tone(180 + Math.random()*200,0.04,"square",0.04);
+        if(++i > 14) clearInterval(r);
+    },70);
+}
+
+function winSound(amount){
+    if(amount >= 50){
+        tone(523,0.12,"triangle");
+        setTimeout(()=>tone(659,0.12,"triangle"),100);
+        setTimeout(()=>tone(784,0.18,"triangle"),200);
+        setTimeout(()=>tone(1047,0.25,"triangle"),300);
+    } else {
+        tone(520,0.1,"triangle",0.06);
+        setTimeout(()=>tone(660,0.1,"triangle",0.06),100);
     }
 }
 
-/* ⚡ mystical “spin tick” (reduced slot machine, more arcane hum) */
-function fatePulse() {
-    const now = audioCtx.currentTime;
-
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-
-    osc.type = "triangle";
-    osc.frequency.setValueAtTime(300 + Math.random() * 400, now);
-
-    gain.gain.setValueAtTime(0.05, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
-
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-
-    osc.start();
-    osc.stop(now + 0.06);
+function loseSound(){
+    tone(180,0.15,"sawtooth",0.06);
+    setTimeout(()=>tone(120,0.2,"sawtooth",0.05),120);
 }
 
-/* 🪨 altar “lock” sound */
-function fateLock() {
-    const now = audioCtx.currentTime;
-
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(140, now);
-    osc.frequency.exponentialRampToValueAtTime(80, now + 0.25);
-
-    gain.gain.setValueAtTime(0.25, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-
-    osc.start();
-    osc.stop(now + 0.3);
+function coinSound(){
+    tone(1200,0.03,"square",0.05);
 }
 
-/* ✨ faint magical reveal */
-function fateReveal() {
-    const now = audioCtx.currentTime;
+/* ---------------- PHYSICS PARTICLES ---------------- */
 
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
+const GRAVITY = 0.28;
+const BOUNCE = 0.6;
 
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(500, now);
-    osc.frequency.exponentialRampToValueAtTime(900, now + 0.3);
-
-    gain.gain.setValueAtTime(0.12, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-
-    osc.start();
-    osc.stop(now + 0.35);
+function spawnParticles(x, y, count){
+    for(let i = 0; i < count; i++){
+        particles.push({
+            x,
+            y,
+            vx: (Math.random() - 0.5) * 6,
+            vy: (Math.random() - 2) * 6,
+            size: 3 + Math.random() * 2,
+            life: 140
+        });
+    }
 }
 
-function roll(max) {
-    initAudio();
+const bounds = {
+    left: 0,
+    right: 420,
+    top: 0,
+    bottom: 300
+};
 
-    const el = document.getElementById("number");
-    const buttons = document.querySelectorAll("button");
+function loopParticles(){
+    ctx.clearRect(0,0,420,300);
 
-    buttons.forEach(b => b.disabled = true);
+    for(let p of particles){
 
-    const final = Math.floor(Math.random() * max) + 1;
+        // gravity
+        p.vy += GRAVITY;
 
-    let t = 0;
+        // movement
+        p.x += p.vx;
+        p.y += p.vy;
 
-    function step() {
-        el.textContent = Math.floor(Math.random() * max) + 1;
-        el.style.transform = `scale(1.12) rotate(${Math.random()*4-2}deg)`;
-
-        fatePulse();
-
-        t++;
-
-        const delay = 35 + t * 7;
-
-        if (t < 30) {
-            setTimeout(step, delay);
-        } else {
-            el.textContent = final;
-            el.style.transform = "scale(1) rotate(0deg)";
-
-            fateLock();
-            if (Math.random() > 0.6) fateReveal();
-
-            buttons.forEach(b => b.disabled = false);
+        // floor bounce (reel base)
+        if(p.y > bounds.bottom - 45){
+            p.y = bounds.bottom - 45;
+            p.vy *= -BOUNCE;
+            p.vx *= 0.85;
         }
+
+        // walls
+        if(p.x < bounds.left){
+            p.x = bounds.left;
+            p.vx *= -BOUNCE;
+        }
+        if(p.x > bounds.right){
+            p.x = bounds.right;
+            p.vx *= -BOUNCE;
+        }
+
+        // fade
+        p.life--;
+
+        ctx.fillStyle = "gold";
+        ctx.fillRect(p.x, p.y, p.size, p.size);
     }
 
-    step();
+    particles = particles.filter(p => p.life > 0);
+
+    requestAnimationFrame(loopParticles);
 }
+
+loopParticles();
+
+/* ---------------- SHAKE ---------------- */
+
+function shake(intensity=8,duration=300){
+    const m = document.querySelector(".machine");
+    const start = Date.now();
+
+    const i = setInterval(()=>{
+        let t = Date.now()-start;
+
+        if(t > duration){
+            clearInterval(i);
+            m.style.transform = "translate(0,0)";
+            return;
+        }
+
+        m.style.transform =
+        `translate(${(Math.random()-0.5)*intensity}px,
+                   ${(Math.random()-0.5)*intensity}px)`;
+    },16);
+}
+
+/* ---------------- CORE ---------------- */
+
+function getSymbols(){
+    return skins[currentSkin];
+}
+
+function randomSymbol(){
+    const arr = getSymbols();
+    return arr[Math.floor(Math.random()*arr.length)];
+}
+
+function update(){
+    creditsEl.textContent = credits;
+}
+
+/* ---------------- PHYSICS REELS ---------------- */
+
+function startPhysicsReel(el){
+    let index = Math.random()*5;
+    let velocity = 38 + Math.random()*10;
+
+    const loop = setInterval(()=>{
+
+        index += velocity;
+        velocity *= 0.93;
+
+        el.textContent = getSymbols()[Math.floor(index)%getSymbols().length];
+
+        if(velocity < 0.5){
+            velocity *= 0.98;
+        }
+
+    },16);
+
+    return {
+        stop(finalSymbol){
+            clearInterval(loop);
+            el.textContent = finalSymbol;
+        }
+    };
+}
+
+/* ---------------- SKINS ---------------- */
+
+function setSkin(name){
+    currentSkin = name;
+    messageEl.textContent = `🎨 Skin: ${name}`;
+}
+
+/* ---------------- REWARD FX (CRESCENDO) ---------------- */
+
+function rewardFX(amount){
+    spawnParticles(210,120,Math.min(120,20+amount*2));
+    shake(4+amount*0.2,300+amount*5);
+
+    let i = 0;
+
+    const interval = setInterval(()=>{
+
+        credits += 1;
+        update();
+
+        tone(500 + i*30,0.04,"square",0.05);
+        coinSound();
+
+        spawnParticles(
+            210 + (Math.random()-0.5)*20,
+            120 + (Math.random()-0.5)*20,
+            2
+        );
+
+        i++;
+
+        if(i >= amount){
+            clearInterval(interval);
+            tone(1200,0.08,"triangle",0.06);
+            spawnParticles(210,120,40);
+        }
+
+    },40);
+}
+
+/* ---------------- SPIN ---------------- */
+
+function spin(){
+    if(spinning || credits <= 0) return;
+
+    if(audioCtx.state === "suspended") audioCtx.resume();
+
+    spinning = true;
+    credits -= 10;
+    update();
+    spinBtn.disabled = true;
+    messageEl.textContent = "";
+
+    spinSound();
+
+    const a = randomSymbol();
+    const b = randomSymbol();
+    const c = randomSymbol();
+
+    const r1 = startPhysicsReel(s1);
+    const r2 = startPhysicsReel(s2);
+    const r3 = startPhysicsReel(s3);
+
+    setTimeout(()=>r1.stop(a),900);
+    setTimeout(()=>r2.stop(b),1400);
+
+    setTimeout(()=>{
+
+        r3.stop(c);
+
+        let win = 0;
+
+        if(a===b && b===c){
+            win = 50;
+            messageEl.textContent = "🎉 TRIPLE MATCH +50";
+        }
+        else if(a===b || b===c || a===c){
+            win = 10;
+            messageEl.textContent = "✨ DOUBLE MATCH +10";
+        }
+        else {
+            loseSound();
+            messageEl.textContent = "Try again!";
+        }
+
+        if(win > 0){
+            winSound(win);
+            rewardFX(win);
+        }
+
+        spinning = false;
+        spinBtn.disabled = false;
+
+    },2000);
+}
+
+spinBtn.addEventListener("click", spin);
 </script>
 
 </body>
