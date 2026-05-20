@@ -1,202 +1,77 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Runner Test</title>
-<style>
-body {
-  margin: 0;
-  background: #1b0626;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-}
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Random Number Game</title>
 
-canvas {
-  border: 2px solid white;
-}
+<style>
+    body {
+        margin: 0;
+        background: #121212;
+        color: white;
+        font-family: Arial, sans-serif;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+    }
+
+    .game-box {
+        text-align: center;
+        background: #1e1e1e;
+        padding: 40px;
+        border-radius: 20px;
+        box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    }
+
+    h1 {
+        margin-bottom: 20px;
+    }
+
+    #number {
+        font-size: 60px;
+        margin: 20px 0;
+        color: #00ffcc;
+        transition: transform 0.2s;
+    }
+
+    button {
+        padding: 15px 30px;
+        font-size: 20px;
+        border: none;
+        border-radius: 10px;
+        background: #00ffcc;
+        color: black;
+        cursor: pointer;
+        transition: 0.2s;
+    }
+
+    button:hover {
+        transform: scale(1.05);
+    }
 </style>
 </head>
-
 <body>
-<canvas id="game" width="800" height="450"></canvas>
+
+<div class="game-box">
+    <h1>🎲 Random Number Game</h1>
+    <div id="number">?</div>
+    <button onclick="generateNumber()">Press Me</button>
+</div>
 
 <script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+function generateNumber() {
+    const randomNum = Math.floor(Math.random() * 100) + 1;
+    const numberEl = document.getElementById("number");
 
-// GAME STATE
-let player, obstacles, speed, wishes, running;
+    numberEl.style.transform = "scale(1.4)";
+    numberEl.textContent = randomNum;
 
-// INIT
-function reset() {
-  player = { x: 100, y: 300, vy: 0, jumps: 2, dash: 0 };
-  obstacles = [];
-  speed = 300;
-  wishes = 3;
-  running = true;
+    setTimeout(() => {
+        numberEl.style.transform = "scale(1)";
+    }, 150);
 }
-
-// START IMMEDIATELY
-reset();
-
-// SPAWN OBJECTS
-function spawn() {
-  let r = Math.random();
-  let type;
-
-  if (r < 0.5) type = "fairy";
-  else if (r < 0.8) type = "star";
-  else type = "spike";
-
-  obstacles.push({
-    type,
-    x: 800,
-    y: type === "spike" ? 330 : 260,
-    size: 25
-  });
-}
-
-// UPDATE
-function update(dt) {
-  speed += dt * 20;
-
-  // PLAYER PHYSICS
-  player.vy += 900 * dt;
-  player.y += player.vy * dt;
-
-  // GROUND
-  if (player.y > 300) {
-    player.y = 300;
-    player.vy = 0;
-    player.jumps = 2;
-  }
-
-  // MOVE OBSTACLES
-  obstacles.forEach(o => o.x -= speed * dt);
-  obstacles = obstacles.filter(o => o.x > -50);
-
-  // SPAWN
-  if (Math.random() < dt * 2) spawn();
-
-  // COLLISION
-  obstacles.forEach(o => {
-    if (
-      Math.abs(o.x - player.x) < 25 &&
-      Math.abs(o.y - player.y) < 40
-    ) {
-      if (o.type === "fairy") {
-        o.x = -100;
-      }
-      else if (o.type === "star") {
-        if (player.dash > 0) {
-          o.x = -100;
-        } else {
-          hit();
-        }
-      }
-      else {
-        hit();
-      }
-    }
-  });
-
-  // DASH TIMER
-  if (player.dash > 0) player.dash -= dt;
-}
-
-// HIT / LOSE LIFE
-function hit() {
-  wishes--;
-  player.y = 300;
-  player.vy = 0;
-
-  if (wishes <= 0) {
-    running = false;
-  }
-}
-
-// DRAW
-function draw() {
-  // BACKGROUND
-  ctx.fillStyle = "#2b0a3d";
-  ctx.fillRect(0, 0, 800, 450);
-
-  // GROUND
-  ctx.fillStyle = "#3a1c4e";
-  ctx.fillRect(0, 330, 800, 120);
-
-  // PLAYER
-  ctx.fillStyle = player.dash > 0 ? "#00ff9f" : "#ffffff";
-  ctx.fillRect(player.x, player.y, 30, 30);
-
-  // OBSTACLES
-  obstacles.forEach(o => {
-    if (o.type === "fairy") ctx.fillStyle = "#70f0ff";
-    else if (o.type === "star") ctx.fillStyle = "#ffd85c";
-    else ctx.fillStyle = "#ff4d7d";
-
-    ctx.fillRect(o.x, o.y, o.size, o.size);
-  });
-
-  // UI
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "16px Arial";
-  ctx.fillText("Wishes: " + wishes, 10, 20);
-
-  // GAME OVER SCREEN
-  if (!running) {
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.fillRect(0, 0, 800, 450);
-
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "32px Arial";
-    ctx.fillText("GAME OVER", 300, 200);
-
-    ctx.font = "18px Arial";
-    ctx.fillText("Press R to Restart", 300, 240);
-  }
-}
-
-// LOOP
-let last = 0;
-function loop(t) {
-  let dt = (t - last) / 1000;
-  last = t;
-
-  if (running) update(dt);
-
-  draw();
-
-  requestAnimationFrame(loop);
-}
-
-// CONTROLS
-window.addEventListener("keydown", e => {
-  let key = e.key.toLowerCase();
-
-  // JUMP
-  if (key === " " || key === "z") {
-    if (player.jumps > 0 && running) {
-      player.vy = -500;
-      player.jumps--;
-    }
-  }
-
-  // DASH
-  if (key === "x" || key === "shift") {
-    player.dash = 0.3;
-  }
-
-  // RESTART
-  if (key === "r" && !running) {
-    reset();
-  }
-});
-
-// START LOOP
-loop(0);
 </script>
 
 </body>
