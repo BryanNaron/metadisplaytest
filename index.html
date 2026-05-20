@@ -1,76 +1,224 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Random Number Game</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Fate Dice Altar</title>
 
 <style>
     body {
         margin: 0;
-        background: #121212;
-        color: white;
-        font-family: Arial, sans-serif;
+        height: 100vh;
         display: flex;
         justify-content: center;
         align-items: center;
-        height: 100vh;
+
+        /* dungeon / tavern ambience */
+        background: radial-gradient(circle at top, #2b2117, #070606);
+        font-family: "Georgia", serif;
+        color: #f4e7c9;
     }
 
-    .game-box {
+    .altar {
+        width: 380px;
+        padding: 28px;
         text-align: center;
-        background: #1e1e1e;
-        padding: 40px;
-        border-radius: 20px;
-        box-shadow: 0 0 20px rgba(0,0,0,0.5);
+
+        /* stone altar look */
+        background: linear-gradient(145deg, #2c241a, #15110d);
+        border: 2px solid #6b5538;
+        border-radius: 18px;
+
+        box-shadow:
+            0 0 50px rgba(0,0,0,0.9),
+            inset 0 0 25px rgba(255, 200, 120, 0.05);
     }
 
     h1 {
-        margin-bottom: 20px;
+        font-size: 18px;
+        letter-spacing: 3px;
+        margin-bottom: 5px;
+        color: #e7d3a1;
+        text-transform: uppercase;
+    }
+
+    .subtitle {
+        font-size: 12px;
+        opacity: 0.7;
+        margin-bottom: 15px;
+        letter-spacing: 1px;
     }
 
     #number {
-        font-size: 60px;
+        font-size: 86px;
         margin: 20px 0;
-        color: #00ffcc;
-        transition: transform 0.2s;
+        color: #ffdca3;
+        text-shadow:
+            0 0 15px rgba(255, 220, 160, 0.3),
+            0 0 35px rgba(255, 170, 80, 0.15);
+        transition: transform 0.08s;
+    }
+
+    .buttons {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-top: 10px;
     }
 
     button {
-        padding: 15px 30px;
-        font-size: 20px;
-        border: none;
+        padding: 10px;
         border-radius: 10px;
-        background: #00ffcc;
-        color: black;
+
+        background: linear-gradient(#3a2e21, #241a12);
+        border: 1px solid #7a6242;
+
+        color: #f4e7c9;
+        font-weight: bold;
+        font-family: "Georgia", serif;
+
         cursor: pointer;
         transition: 0.2s;
     }
 
-    button:hover {
+    button:hover:not(:disabled) {
         transform: scale(1.05);
+        border-color: #d6b06a;
+        box-shadow: 0 0 12px rgba(255, 200, 120, 0.2);
+    }
+
+    button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
     }
 </style>
 </head>
+
 <body>
 
-<div class="game-box">
-    <h1>🎲 Random Number Game</h1>
-    <div id="number">?</div>
-    <button onclick="generateNumber()">Press Me</button>
+<div class="altar">
+    <h1>⚔️ FATE ALTAR</h1>
+    <div class="subtitle">The dice speak only truth</div>
+
+    <div id="number">-</div>
+
+    <div class="buttons">
+        <button onclick="roll(4)">d4</button>
+        <button onclick="roll(6)">d6</button>
+        <button onclick="roll(8)">d8</button>
+        <button onclick="roll(10)">d10</button>
+        <button onclick="roll(12)">d12</button>
+        <button onclick="roll(20)">d20</button>
+    </div>
 </div>
 
 <script>
-function generateNumber() {
-    const randomNum = Math.floor(Math.random() * 100) + 1;
-    const numberEl = document.getElementById("number");
+let audioCtx;
 
-    numberEl.style.transform = "scale(1.4)";
-    numberEl.textContent = randomNum;
+function initAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+}
 
-    setTimeout(() => {
-        numberEl.style.transform = "scale(1)";
-    }, 150);
+/* ⚡ mystical “spin tick” (reduced slot machine, more arcane hum) */
+function fatePulse() {
+    const now = audioCtx.currentTime;
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(300 + Math.random() * 400, now);
+
+    gain.gain.setValueAtTime(0.05, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start();
+    osc.stop(now + 0.06);
+}
+
+/* 🪨 altar “lock” sound */
+function fateLock() {
+    const now = audioCtx.currentTime;
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(140, now);
+    osc.frequency.exponentialRampToValueAtTime(80, now + 0.25);
+
+    gain.gain.setValueAtTime(0.25, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start();
+    osc.stop(now + 0.3);
+}
+
+/* ✨ faint magical reveal */
+function fateReveal() {
+    const now = audioCtx.currentTime;
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(500, now);
+    osc.frequency.exponentialRampToValueAtTime(900, now + 0.3);
+
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start();
+    osc.stop(now + 0.35);
+}
+
+function roll(max) {
+    initAudio();
+
+    const el = document.getElementById("number");
+    const buttons = document.querySelectorAll("button");
+
+    buttons.forEach(b => b.disabled = true);
+
+    const final = Math.floor(Math.random() * max) + 1;
+
+    let t = 0;
+
+    function step() {
+        el.textContent = Math.floor(Math.random() * max) + 1;
+        el.style.transform = `scale(1.12) rotate(${Math.random()*4-2}deg)`;
+
+        fatePulse();
+
+        t++;
+
+        const delay = 35 + t * 7;
+
+        if (t < 30) {
+            setTimeout(step, delay);
+        } else {
+            el.textContent = final;
+            el.style.transform = "scale(1) rotate(0deg)";
+
+            fateLock();
+            if (Math.random() > 0.6) fateReveal();
+
+            buttons.forEach(b => b.disabled = false);
+        }
+    }
+
+    step();
 }
 </script>
 
