@@ -124,7 +124,7 @@ this.lastInvertTrigger = 0;
     CLEAR_TIME: 3000,
     CLOUD_FREQUENCY: 0.5,
     GAMEOVER_CLEAR_TIME: 750,
-    GAP_COEFFICIENT: 0.6,
+    GAP_COEFFICIENT: 1.2, //obstacle distance
     GRAVITY: 0.6,
     INITIAL_JUMP_VELOCITY: 12,
     MAX_CLOUDS: 6,
@@ -461,7 +461,7 @@ this.dimensions.HEIGHT = 600;
 var score = this.distanceMeter.getActualDistance(this.distanceRan);
 
 // ✅ Every 200 points trigger invert
-if (score - this.lastInvertTrigger >= 500) {
+if (score - this.lastInvertTrigger >= 200) {
   this.lastInvertTrigger = score;
 
   // toggle between normal and inverted
