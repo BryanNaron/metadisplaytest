@@ -118,7 +118,7 @@ this.lastInvertTrigger = 0;
     * @enum {number}
     */
     Runner.config = {
-    ACCELERATION: 0.001,
+    ACCELERATION: 0.0005, // ✅ slower ramp-up (half speed)
     BG_CLOUD_SPEED: 0.2,
     BOTTOM_PAD: 10,
     CLEAR_TIME: 3000,
@@ -129,11 +129,11 @@ this.lastInvertTrigger = 0;
     INITIAL_JUMP_VELOCITY: 12,
     MAX_CLOUDS: 6,
     MAX_OBSTACLE_LENGTH: 3,
-    MAX_SPEED: 12,
+    MAX_SPEED: 9, // ✅ lower top speed
     MIN_JUMP_HEIGHT: 35,
     MOBILE_SPEED_COEFFICIENT: 1.2,
     RESOURCE_TEMPLATE_ID: 'audio-resources',
-    SPEED: 6,
+    SPEED: 4, // ✅ slower starting speed
     SPEED_DROP_COEFFICIENT: 3
     };
     /**
@@ -1235,14 +1235,14 @@ playSound: function(soundBuffer) {
     */
     Trex.config = {
     DROP_VELOCITY: -5,
-    GRAVITY: 0.6,
+    GRAVITY: 0.4,
     HEIGHT: 47,
-    INIITAL_JUMP_VELOCITY: -10,
+    INIITAL_JUMP_VELOCITY: -11, //jump height
     INTRO_DURATION: 1500,
     MAX_JUMP_HEIGHT: 30,
     MIN_JUMP_HEIGHT: 30,
-    SPEED_DROP_COEFFICIENT: 3,
-    SPRITE_WIDTH: 262,
+    SPEED_DROP_COEFFICIENT: 30,
+    SPRITE_WIDTH: 2620,
     START_X_POS: 50,
     WIDTH: 44
     };
