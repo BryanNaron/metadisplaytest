@@ -1,7 +1,8 @@
 <html>
 
 <head>
-<title>T-Rex Game</title>
+<title>Dino Dash</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="description" content="Ripped T-Rex/Dino game of Chromium">
 <meta property="og:title" content="Play the hidden T-Rex Dinosaur game of Chromium .">
 <meta property="og:type" content="article">
@@ -29,9 +30,6 @@
         myClasses[i].style.display = 'none';
       }
 	}
-    // Copyright (c) 2014 The Chromium Authors. All rights reserved.
-    // Use of this source code is governed by a BSD-style license that can be
-    // found in the LICENSE file.
     (function() {
     'use strict';
     /**
@@ -118,7 +116,7 @@ this.lastInvertTrigger = 0;
     * @enum {number}
     */
     Runner.config = {
-    ACCELERATION: 0.0005, // ✅ slower ramp-up (half speed)
+    ACCELERATION: 0.0009, // ✅ slower ramp-up (half speed)
     BG_CLOUD_SPEED: 0.2,
     BOTTOM_PAD: 10,
     CLEAR_TIME: 3000,
@@ -2045,19 +2043,23 @@ this.canvasCtx.drawImage(this.image, 0, 0,
 	</script>
 
 
-	<style>/* Copyright 2014 The Chromium Authors. All rights reserved.
-   Use of this source code is governed by a BSD-style license that can be
-   found in the LICENSE file. */
+	<style>
 
 a {
   color: #585858;
 }
 
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 body {
-  background-color: #f7f7f7;
-  color: #585858;
+  background-color: #000; /* dark background behaves better on additive displays */
   font-size: 125%;
 }
+
 
 body.safe-browsing {
   background-color: rgb(206, 52, 38);
@@ -2310,9 +2312,7 @@ input[type=checkbox] {
   }
 }
 </style>
-  <style>/* Copyright 2013 The Chromium Authors. All rights reserved.
- * Use of this source code is governed by a BSD-style license that can be
- * found in the LICENSE file. */
+  <style>
 
 /* Don't use the main frame div when the error is in a subframe. */
 html[subframe] #main-frame-error {
@@ -2578,32 +2578,46 @@ html[subframe] body {
 
 /* Offline page */
 .offline .interstitial-wrapper {
-  color: #2b2b2b;
-  font-size: 1em;
-  line-height: 1.55;
-  margin: 100px auto 0;
-  max-width: 600px;
-  width: 100%;
+  margin: 0;
+  width: 600px;
+  height: 600px;
+  max-width: none;
+
+  /* keep it locked to the display */
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+
+:root{
+  /* tweak these until it looks centered on the glasses */
+  --hud-x: -18px;  /* shift left */
+  --hud-y:  6px;   /* shift down */
 }
 
 .offline .runner-container {
-  height: 600px;
-  max-width: 600px;
-  overflow: hidden;
-  position: absolute;
-  top: 10px;
   width: 600px;
+  height: 600px;
+  overflow: hidden;
+  position: fixed;
+
+  left: 50%;
+  top: 50%;
+
+  /* center + your per-device offset */
+  transform: translate(-50%, -50%) translate(var(--hud-x), var(--hud-y));
   z-index: 2;
 }
 
 .offline .runner-canvas {
-width: 600px;
+  width: 600px;
   height: 600px;
-  max-width: 600px;
-  opacity: 1;
-  overflow: hidden;
   position: absolute;
+  left: 0;
   top: 0;
+  opacity: 1;
 }
 
 .offline .controller {
@@ -2648,7 +2662,7 @@ width: 600px;
 </style>
 </head>
 
-<body id="t">
+<body id="t" class="offline">
 <script>
   window.fbAsyncInit = function() {
     FB.init({
