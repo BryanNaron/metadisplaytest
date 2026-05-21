@@ -194,10 +194,10 @@ Runner.defaultDimensions = {
     * Key code mapping.
     * @enum {object}
     */
-    Runner.keycodes = {
-    JUMP: {'38': 1, '32': 1}, // Up, spacebar
+Runner.keycodes = {
+    JUMP: {'38': 1, '32': 1, '13': 1}, // Up, spacebar, Enter ✅
     DUCK: {'40': 1}, // Down
-    RESTART: {'13': 1} // Enter
+    RESTART: {'13': 1} // Enter (still restarts on crash) ✅
     };
     /**
     * Runner event names.
@@ -461,7 +461,7 @@ this.dimensions.HEIGHT = 600;
 var score = this.distanceMeter.getActualDistance(this.distanceRan);
 
 // ✅ Every 200 points trigger invert
-if (score - this.lastInvertTrigger >= 50) {
+if (score - this.lastInvertTrigger >= 500) {
   this.lastInvertTrigger = score;
 
   // toggle between normal and inverted
@@ -577,14 +577,24 @@ this.raq();
     if (e.target != this.detailsButton) {
     if (!this.crashed && (Runner.keycodes.JUMP[String(e.keyCode)] ||
     e.type == Runner.events.TOUCHSTART)) {
-    if (!this.activated) {
-    this.loadSounds();
-    this.activated = true;
-    }
-    if (!this.tRex.jumping) {
+
+if (!this.activated) {
+  this.loadSounds();
+  this.activated = true;
+}
+
+// ✅ ALWAYS jump immediately
+if (!this.tRex.jumping) {
+  this.tRex.startJump();
+
+  // ✅ Only play sound if it's actually loaded
+  if (this.soundFx.BUTTON_PRESS) {
     this.playSound(this.soundFx.BUTTON_PRESS);
-    this.tRex.startJump();
-    }
+  }
+}
+
+
+
     }
     if (this.crashed && e.type == Runner.events.TOUCHSTART &&
     e.currentTarget == this.containerEl) {
@@ -603,9 +613,11 @@ this.raq();
     */
     onKeyUp: function(e) {
     var keyCode = String(e.keyCode);
-    var isjumpKey = Runner.keycodes.JUMP[keyCode] ||
-    e.type == Runner.events.TOUCHEND ||
-    e.type == Runner.events.MOUSEDOWN;
+
+var isjumpKey = Runner.keycodes.JUMP[keyCode] ||
+  e.type == Runner.events.TOUCHEND ||
+  e.type == Runner.events.MOUSEUP;
+
     if (this.isRunning() && isjumpKey) {
     this.tRex.endJump();
     } else if (Runner.keycodes.DUCK[keyCode]) {
@@ -721,14 +733,22 @@ this.invertLevel = 0;
     * Play a sound.
     * @param {SoundBuffer} soundBuffer
     */
-    playSound: function(soundBuffer) {
-    if (soundBuffer) {
+
+playSound: function(soundBuffer) {
+  if (soundBuffer && this.audioContext) {
+
+    // ✅ Ensure audio context is active
+    if (this.audioContext.state === 'suspended') {
+      this.audioContext.resume();
+    }
+
     var sourceNode = this.audioContext.createBufferSource();
     sourceNode.buffer = soundBuffer;
     sourceNode.connect(this.audioContext.destination);
     sourceNode.start(0);
-    }
-    }
+  }
+}
+
     };
     /**
     * Updates the canvas size taking into
@@ -1389,10 +1409,7 @@ this.invertLevel = 0;
     * Jump is complete, falling down.
     */
     endJump: function() {
-    if (this.reachedMinHeight &&
-    this.jumpVelocity < this.config.DROP_VELOCITY) {
-    this.jumpVelocity = this.config.DROP_VELOCITY;
-    }
+
     },
     /**
     * Update frame for a jump.
