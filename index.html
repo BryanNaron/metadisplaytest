@@ -584,13 +584,13 @@ if (!this.activated) {
 }
 
 // ✅ ALWAYS jump immediately
-if (!this.tRex.jumping) {
-  this.tRex.startJump();
 
-  // ✅ Only play sound if it's actually loaded
-  if (this.soundFx.BUTTON_PRESS) {
+
+// ✅ Allow double jump (max 2 jumps before landing)
+if (this.tRex.jumpCount < 2) {
     this.playSound(this.soundFx.BUTTON_PRESS);
-  }
+    this.tRex.startJump();
+
 }
 
 
@@ -1396,15 +1396,30 @@ playSound: function(soundBuffer) {
     /**
     * Initialise a jump.
     */
-    startJump: function() {
-    if (!this.jumping) {
+
+startJump: function() {
+  // ✅ Allow up to 2 jumps before landing
+  if (this.jumpCount >= 2) return;
+
+  // First jump: switch animation state
+  if (!this.jumping) {
     this.update(0, Trex.status.JUMPING);
-    this.jumpVelocity = this.config.INIITAL_JUMP_VELOCITY;
     this.jumping = true;
-    this.reachedMinHeight = false;
-    this.speedDrop = false;
-    }
-    },
+  } else {
+    // Second jump: keep jumping state but refresh animation frame cleanly
+    this.update(0, Trex.status.JUMPING);
+  }
+
+  // ✅ Apply jump impulse (slightly weaker on 2nd jump for balance)
+  var base = this.config.INIITAL_JUMP_VELOCITY;
+  this.jumpVelocity = (this.jumpCount === 1) ? (base * 0.85) : base;
+
+  this.reachedMinHeight = false;
+  this.speedDrop = false;
+
+  // ✅ Count this jump
+  this.jumpCount++;
+},
     /**
     * Jump is complete, falling down.
     */
@@ -1435,10 +1450,12 @@ playSound: function(soundBuffer) {
     this.endJump();
     }
     // Back down at ground level. Jump completed.
-    if (this.yPos > this.groundYPos) {
-    this.reset();
-    this.jumpCount++;
-    }
+
+if (this.yPos > this.groundYPos) {
+  this.reset(); // ✅ reset already sets jumpCount = 0
+}
+
+
     this.update(deltaTime);
     },
     /**
