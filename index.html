@@ -116,7 +116,7 @@ this.lastInvertTrigger = 0;
     * @enum {number}
     */
     Runner.config = {
-    ACCELERATION: 0.0009, // ✅ slower ramp-up (half speed)
+    ACCELERATION: 0.0015, // ✅ slower ramp-up (half speed)
     BG_CLOUD_SPEED: 0.2,
     BOTTOM_PAD: 10,
     CLEAR_TIME: 3000,
@@ -2056,7 +2056,8 @@ html, body {
 }
 
 body {
-  background-color: #000; /* dark background behaves better on additive displays */
+  background-color: #f7f7f7; /* ✅ back to original */
+  color: #585858;
   font-size: 125%;
 }
 
