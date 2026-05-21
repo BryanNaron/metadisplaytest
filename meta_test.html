@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Random Number Game</title>
+
+<style>
+    body {
+        margin: 0;
+        background: #121212;
+        color: white;
+        font-family: Arial, sans-serif;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+    }
+
+.game-box {
+    text-align: center;
+    background: #1e1e1e;
+    padding: 40px;
+    border-radius: 20px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+
+    width: 350px;
+    aspect-ratio: 1 / 1; /* makes it a perfect square */
+
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+
+    h1 {
+        margin-bottom: 20px;
+    }
+
+    #number {
+        font-size: 60px;
+        margin: 20px 0;
+        color: #00ffcc;
+        transition: transform 0.2s;
+    }
+
+    button {
+        padding: 15px 30px;
+        font-size: 20px;
+        border: none;
+        border-radius: 10px;
+        background: #00ffcc;
+        color: black;
+        cursor: pointer;
+        transition: 0.2s;
+    }
+
+    button:hover {
+        transform: scale(1.05);
+    }
+</style>
+</head>
+<body>
+
+<div class="game-box">
+    <h1>🎲 Random Number Game</h1>
+    <div id="number">?</div>
+    <button onclick="generateNumber()">Press Me</button>
+</div>
+
+<script>
+function generateNumber() {
+    const randomNum = Math.floor(Math.random() * 100) + 1;
+    const numberEl = document.getElementById("number");
+
+    numberEl.style.transform = "scale(1.4)";
+    numberEl.textContent = randomNum;
+
+    setTimeout(() => {
+        numberEl.style.transform = "scale(1)";
+    }, 150);
+}
+</script>
+
+</body>
+</html>
