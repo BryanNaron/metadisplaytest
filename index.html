@@ -215,7 +215,194 @@ async function requestMotionPermission(){
 }
 
 function startIMU(){
-  window.addEventListener('deviceorientation', handleOrientation, true);
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=600, height=600, initial-scale=1.0, user-scalable=no">
+  <title>TiltGala (MRBD)</title>
+
+  <style>
+    :root{
+      --bg:#000;            /* black = transparent on additive display */
+      --panel:#101216;
+      --panel2:#1c1e21;
+      --text:#e8f6ff;
+      --dim:#8fb8c7;
+      --cyan:#00d4ff;
+      --green:#38ff7a;
+      --red:#ff3355;
+      --amber:#ffcc33;
+      --mag:#c86bff;
+    }
+
+    html, body {
+      width: 600px;
+      height: 600px;
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+
+    #app { position: relative; width: 600px; height: 600px; }
+    canvas { display:block; width:600px; height:600px; background:var(--bg); }
+
+    #hud {
+      position:absolute; top:0; left:0; right:0;
+      padding: 12px 16px;
+      display:flex; justify-content: space-between; align-items:center;
+      gap: 12px;
+      pointer-events:none;
+    }
+
+    .pill {
+      background: rgba(16,18,22,0.78);
+      border: 1px solid rgba(0,212,255,0.25);
+      box-shadow: 0 0 14px rgba(0,212,255,0.12);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 18px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .pill strong { color: var(--cyan); font-weight: 900; }
+
+    #panel {
+      position:absolute;
+      left:16px; right:16px; bottom:16px;
+      background: rgba(16,18,22,0.84);
+      border: 1px solid rgba(0,212,255,0.30);
+      border-radius: 18px;
+      box-shadow: 0 0 22px rgba(0,212,255,0.16);
+      padding: 14px;
+    }
+    #title { margin:0 0 8px 0; font-size:24px; font-weight:900; }
+    #subtitle { margin:0 0 12px 0; font-size:16px; color:var(--dim); }
+
+    .row { display:flex; gap:10px; flex-wrap:wrap; }
+
+    /* Focusable contract: all interactive elements must be reachable via arrows + Enter */
+    .focusable {
+      min-height: 88px;
+      padding: 10px 12px;
+      border-radius: 16px;
+      border: 2px solid transparent;
+      background: rgba(28,30,33,0.92);
+      color: var(--text);
+      font-size: 18px;
+      font-weight: 800;
+      flex: 1 1 45%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap: 10px;
+      user-select:none;
+    }
+    .focusable:focus {
+      outline:none;
+      border-color: var(--cyan);
+      box-shadow: 0 0 22px rgba(0,212,255,0.45);
+    }
+    .focusable[disabled]{ opacity:0.45; }
+
+    .hint {
+      margin-top:10px;
+      font-size:16px;
+      color: var(--dim);
+      display:flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .hidden { display:none !important; }
+  </style>
+</head>
+
+<body>
+<div id="app">
+  <canvas id="c" width="600" height="600" aria-label="TiltGala game canvas"></canvas>
+
+  <div id="hud">
+    <div class="pill">Score <strong id="score">0</strong></div>
+    <div class="pill">Lives <strong id="lives">3</strong></div>
+    <div class="pill"><span id="status">Menu</span></div>
+  </div>
+
+  <div id="panel" role="region" aria-label="Game controls">
+    <p id="title">TiltGala</p>
+    <p id="subtitle">Enable motion. Tilt to move. Tap (Enter) to shoot.</p>
+
+    <div class="row">
+      <button id="btnEnable" class="focusable" data-action="enable">🧭 Enable Motion</button>
+      <button id="btnCal" class="focusable" data-action="calibrate" disabled>🎯 Calibrate</button>
+      <button id="btnStart" class="focusable" data-action="start" disabled>▶ Start</button>
+      <button id="btnExit" class="focusable" data-action="exit" disabled>⟵ Exit Game</button>
+    </div>
+
+    <div class="hint">
+      <span>Menu: Arrows = focus • Enter = activate</span>
+      <span>Gameplay: Enter = shoot • Esc = exit</span>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ------------------------------------------------------------
+   MRBD Input Model
+   - D-pad gestures map to Arrow keys
+   - Tap/Select maps to Enter
+   This matches common MRBD templates and examples. [1](https://www.linkedin.com/learning/managed-detection-and-response-mdr-fundamentals?dApp=204528272&leis=MVL)[2](https://activision-my.sharepoint.com/personal/kworrel_treyarch_com/_layouts/15/Doc.aspx?sourcedoc=%7B97EBB917-3EB7-4C07-8BA0-ADABB86FB45B%7D&file=Level%20Art%20Schedule%202024.xlsx&action=default&mobileredirect=true&DefaultItemOpen=1)
+------------------------------------------------------------- */
+const DPAD = {
+  UP: 'ArrowUp', DOWN: 'ArrowDown',
+  LEFT: 'ArrowLeft', RIGHT: 'ArrowRight',
+  SELECT: 'Enter', BACK: 'Escape',
+};
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('c');
+const ctx = canvas.getContext('2d', { alpha: true });
+
+const ui = {
+  score: $('score'),
+  lives: $('lives'),
+  status: $('status'),
+  subtitle: $('subtitle'),
+  btnEnable: $('btnEnable'),
+  btnCal: $('btnCal'),
+  btnStart: $('btnStart'),
+  btnExit: $('btnExit'),
+};
+
+function getFocusables() {
+  return Array.from(document.querySelectorAll('.focusable:not([disabled]):not(.hidden)'));
+}
+
+/* Focus safety net: if focus is lost (common after permission prompts), restore it. */
+function ensureFocus() {
+  const ae = document.activeElement;
+  const lost = !ae || ae === document.body || !ae.classList || !ae.classList.contains('focusable');
+  if (lost) {
+    const focusables = getFocusables();
+    if (focusables.length) focusables[0].focus();
+  }
+}
+
+/* Move focus in a simple loop order (works well for small MRBD menus). */
+function moveFocus(direction) {
+  const focusables = getFocusables();
+  if (!focusables.length) return;
+
+  const idx = focusables.indexOf(document.activeElement);
+  if (idx === -1) { focusables[0].focus(); return; }
+
+  const back = (direction === 'up' || direction === 'left');
+  const next = back
+    ? (idx > 0 ? idx - 1 : focusables.length - 1)
+    : (idx < focusables.length - 1 ? idx + 1 : 0);
+
   hasIMU = true;
   ui.status.textContent = 'IMU On';
   ui.btnCal.disabled = false;
