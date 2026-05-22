@@ -3,15 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=600, height=600, initial-scale=1.0, user-scalable=no">
-  <title>Tilt Catch (MRBD)</title>
-
-  <!-- Optional favicon (MRBD supports PNG; SVG not supported per your pasted docs) -->
-  <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADQAAAA0CAYAAADFeBvrAAAACXBIWXMAAAsSAAALEgHS3X78AAABl0lEQVR4nO2ZsU4CQRSGv1lGm0S0aQh0QqRkYkGgY2JmY2FjY2Nn4EJQWfQG2g1m0cQqGxIYkGm8k8yS8Gm6y8j3c7n0l+JmZ2d9wZ8kq1Wq1Wq1Wq1Wq1Wq1Wq1Wq9WcJ0yBq8m6o1d4H8l2oW0b8GmC7a1oZ6gKfQ7dQw4o9gJm1c8w8iQ9o+qf3V8a6z8kqg5FqGm1qgq8Gqf8sQj8a4cZgTtZq8n2mGm3gJd0n6Y0m2g3Qm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJc0gQm1QJf0F5y7cQYx0pEAAAAASUVORK5CYII=" sizes="52x52">
-
+  <title>TiltGala (MRBD)</title>
   <style>
     :root{
-      --bg:#000;             /* pure black = transparent on additive display */
-      --panel:#101216;        /* visible dark surface */
+      --bg:#000;            /* black = transparent on additive display */
+      --panel:#101216;
       --panel2:#1c1e21;
       --text:#e8f6ff;
       --dim:#8fb8c7;
@@ -19,6 +15,7 @@
       --green:#38ff7a;
       --red:#ff3355;
       --amber:#ffcc33;
+      --mag:#c86bff;
     }
 
     html, body {
@@ -31,35 +28,16 @@
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
     }
 
-    /* Layout */
-    #app {
-      position: relative;
-      width: 600px;
-      height: 600px;
-      background: var(--bg);
-    }
+    #app { position: relative; width: 600px; height: 600px; }
+    canvas { display:block; width:600px; height:600px; background:var(--bg); }
 
-    canvas {
-      display:block;
-      width: 600px;
-      height: 600px;
-      background: var(--bg);
-    }
-
-    /* HUD panel */
     #hud {
-      position:absolute;
-      top: 0;
-      left: 0;
-      right: 0;
+      position:absolute; top:0; left:0; right:0;
       padding: 12px 16px;
-      display:flex;
-      justify-content: space-between;
-      align-items: center;
+      display:flex; justify-content: space-between; align-items:center;
       gap: 12px;
-      pointer-events:none; /* MRBD has no pointer; keep overlay passive */
+      pointer-events:none;
     }
-
     .pill {
       background: rgba(16,18,22,0.78);
       border: 1px solid rgba(0,212,255,0.25);
@@ -70,117 +48,87 @@
       line-height: 1;
       white-space: nowrap;
     }
+    .pill strong { color: var(--cyan); font-weight: 900; }
 
-    .pill strong { color: var(--cyan); font-weight: 800; }
-
-    /* Menu / Controls */
     #panel {
       position:absolute;
-      left: 16px;
-      right: 16px;
-      bottom: 16px;
+      left:16px; right:16px; bottom:16px;
       background: rgba(16,18,22,0.84);
       border: 1px solid rgba(0,212,255,0.30);
       border-radius: 18px;
       box-shadow: 0 0 22px rgba(0,212,255,0.16);
       padding: 14px;
     }
+    #title { margin:0 0 8px 0; font-size:24px; font-weight:900; }
+    #subtitle { margin:0 0 12px 0; font-size:16px; color:var(--dim); }
 
-    #title {
-      font-size: 24px;
-      font-weight: 800;
-      margin: 0 0 8px 0;
-      color: var(--text);
-      letter-spacing: 0.2px;
-    }
+    .row { display:flex; gap:10px; flex-wrap:wrap; }
 
-    #subtitle {
-      margin: 0 0 12px 0;
-      font-size: 16px;
-      color: var(--dim);
-    }
-
-    .row {
-      display:flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    /* Focusable contract (Arrow / Enter navigation) */
     .focusable {
-      min-height: 88px; /* per your docs: glasses minimum tap target */
+      min-height: 88px;
       padding: 10px 12px;
       border-radius: 16px;
       border: 2px solid transparent;
       background: rgba(28,30,33,0.92);
       color: var(--text);
       font-size: 18px;
-      font-weight: 700;
+      font-weight: 800;
       flex: 1 1 45%;
       display:flex;
       align-items:center;
       justify-content:center;
       gap: 10px;
-      user-select: none;
+      user-select:none;
     }
-
     .focusable:focus {
-      outline: none;
+      outline:none;
       border-color: var(--cyan);
-      box-shadow: 0 0 22px rgba(0, 212, 255, 0.45);
+      box-shadow: 0 0 22px rgba(0,212,255,0.45);
     }
-
-    .focusable[disabled]{
-      opacity: 0.45;
-      filter: saturate(0.8);
-    }
+    .focusable[disabled]{ opacity:0.45; }
 
     .hint {
-      font-size: 16px;
+      margin-top:10px;
+      font-size:16px;
       color: var(--dim);
-      margin-top: 10px;
       display:flex;
       justify-content: space-between;
       gap: 10px;
     }
-
     .hidden { display:none !important; }
   </style>
 </head>
 
 <body>
-  <div id="app">
-    <canvas id="c" width="600" height="600" aria-label="Game canvas"></canvas>
+<div id="app">
+  <canvas id="c" width="600" height="600" aria-label="TiltGala game canvas"></canvas>
 
-    <div id="hud">
-      <div class="pill">Score <strong id="score">0</strong></div>
-      <div class="pill">Best <strong id="best">0</strong></div>
-      <div class="pill"><span id="status">Menu</span></div>
-    </div>
-
-    <div id="panel">
-      <p id="title">Tilt Catch</p>
-      <p id="subtitle">Enable motion, then tilt to catch green orbs. Avoid red hazards.</p>
-
-      <div class="row">
-        <button id="btnEnable" class="focusable" data-action="enable">🧭 Enable Motion</button>
-        <button id="btnCal" class="focusable" data-action="calibrate" disabled>🎯 Calibrate</button>
-        <button id="btnStart" class="focusable" data-action="start" disabled>▶ Start</button>
-        <button id="btnPause" class="focusable hidden" data-action="pause">⏸ Pause</button>
-      </div>
-
-      <div class="hint">
-        <span>Controls: Tilt (motion) • Enter selects</span>
-        <span>Arrow keys work as fallback on desktop</span>
-      </div>
-    </div>
+  <div id="hud">
+    <div class="pill">Score <strong id="score">0</strong></div>
+    <div class="pill">Lives <strong id="lives">3</strong></div>
+    <div class="pill"><span id="status">Menu</span></div>
   </div>
 
+  <div id="panel">
+    <p id="title">TiltGala</p>
+    <p id="subtitle">Enable motion. Tilt to move. Tap (Enter) to shoot.</p>
+
+    <div class="row">
+      <button id="btnEnable" class="focusable" data-action="enable">🧭 Enable Motion</button>
+      <button id="btnCal" class="focusable" data-action="calibrate" disabled>🎯 Calibrate</button>
+      <button id="btnStart" class="focusable" data-action="start" disabled>▶ Start</button>
+      <button id="btnExit" class="focusable" data-action="exit" disabled>⟵ Exit Game</button>
+    </div>
+
+    <div class="hint">
+      <span>Gameplay: Enter = Shoot</span>
+      <span>Back: Escape exits</span>
+    </div>
+  </div>
+</div>
+
 <script>
-/* ---------------------------
-   MRBD D-pad / Focus handling
-   (Arrow keys + Enter)
---------------------------- */
+/* Input model: Arrow keys + Enter (MRBD gestures map here). Many MRBD resources describe Enter/Tap as the activate action. */
 const DPAD = {
   UP: 'ArrowUp', DOWN: 'ArrowDown',
   LEFT: 'ArrowLeft', RIGHT: 'ArrowRight',
@@ -188,9 +136,7 @@ const DPAD = {
 };
 
 function moveFocus(direction) {
-  const focusables = Array.from(
-    document.querySelectorAll('.focusable:not([disabled]):not(.hidden)')
-  );
+  const focusables = Array.from(document.querySelectorAll('.focusable:not([disabled]):not(.hidden)'));
   if (!focusables.length) return;
 
   const idx = focusables.indexOf(document.activeElement);
@@ -204,242 +150,68 @@ function moveFocus(direction) {
   focusables[next].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
-/* Game state */
 const $ = (id) => document.getElementById(id);
 const canvas = $('c');
 const ctx = canvas.getContext('2d', { alpha: true });
 
 const ui = {
   score: $('score'),
-  best: $('best'),
+  lives: $('lives'),
   status: $('status'),
+  subtitle: $('subtitle'),
+  panel: $('panel'),
   btnEnable: $('btnEnable'),
   btnCal: $('btnCal'),
   btnStart: $('btnStart'),
-  btnPause: $('btnPause'),
-  panel: $('panel'),
-  subtitle: $('subtitle'),
+  btnExit: $('btnExit'),
 };
 
-let running = false;
-let paused = false;
 let hasIMU = false;
+let running = false;
 
-/* Local storage best score (lightweight; fine per MRBD docs) */
-const BEST_KEY = 'tiltcatch_best';
-let best = Number(localStorage.getItem(BEST_KEY) || 0);
-ui.best.textContent = best;
-
-/* IMU values (DeviceOrientation preferred for tilt) */
-let rawBeta = 0;   // forward/back tilt (x-axis rotation)
-let rawGamma = 0;  // left/right tilt (y-axis rotation)
-
-let centerBeta = 0;
+/* Orientation values:
+   gamma = left/right tilt (-90..90), beta = front/back (-180..180). We'll use gamma for horizontal control. */
+let rawGamma = 0;
 let centerGamma = 0;
 
-/* Smoothed controls */
-let tiltX = 0;  // -1..1
-let tiltY = 0;
+let tiltX = 0;           // smoothed -1..1
+let sensitivity = 0.020; // deg -> normalized scale
+let smoothing = 0.20;    // lerp factor
 
-const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp = (a,b,t)=>a+(b-a)*t;
 
-/* Sensitivity */
-let sensitivity = 0.022;  // degrees -> normalized
-let smoothing = 0.18;     // 0..1
-
-/* Player + entities */
-const player = { x: 300, y: 300, r: 10 };
-let score = 0;
-
-let orb = null;
-let hazards = [];
-let tLast = performance.now();
-
-/* Spawn helpers */
-function rand(a,b){ return a + Math.random()*(b-a); }
-function spawnOrb() {
-  return {
-    x: rand(40, 560),
-    y: rand(80, 520),
-    r: 10,
-    pulse: 0
-  };
-}
-function spawnHazard() {
-  const edge = Math.floor(rand(0,4));
-  const speed = rand(25, 55);
-  let x,y,vx,vy;
-  if (edge === 0) { x = -20; y = rand(60, 580); vx = speed; vy = rand(-20,20); }
-  if (edge === 1) { x = 620; y = rand(60, 580); vx = -speed; vy = rand(-20,20); }
-  if (edge === 2) { x = rand(20, 580); y = -20; vx = rand(-20,20); vy = speed; }
-  if (edge === 3) { x = rand(20, 580); y = 620; vx = rand(-20,20); vy = -speed; }
-  return { x, y, vx, vy, r: rand(10, 14) };
-}
-
-/* Distance */
-function dist2(ax,ay,bx,by){
-  const dx = ax-bx, dy = ay-by;
-  return dx*dx + dy*dy;
-}
-
-/* Rendering (keep black background for additive display) */
-function clear() {
-  ctx.clearRect(0,0,600,600);
-}
-
-function glowCircle(x,y,r,color,glow=18,alpha=1){
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = glow;
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(x,y,r,0,Math.PI*2);
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawReticle(x,y){
-  // bright cyan reticle
-  glowCircle(x,y, player.r, '#00d4ff', 20, 0.95);
-  ctx.save();
-  ctx.strokeStyle = 'rgba(0,212,255,0.85)';
-  ctx.lineWidth = 2;
-  ctx.shadowColor = '#00d4ff';
-  ctx.shadowBlur = 14;
-  ctx.beginPath();
-  ctx.arc(x,y, player.r+8, 0, Math.PI*2);
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawTextCenter(y, text, color='#e8f6ff', size=26){
-  ctx.save();
-  ctx.fillStyle = color;
-  ctx.font = `800 ${size}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(0,212,255,0.25)';
-  ctx.shadowBlur = 14;
-  ctx.fillText(text, 300, y);
-  ctx.restore();
-}
-
-function render(dt) {
-  clear();
-
-  // subtle frame lines (helps orientation but stays low glare)
-  ctx.save();
-  ctx.strokeStyle = 'rgba(0,212,255,0.10)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.rect(10,10,580,580);
-  ctx.stroke();
-  ctx.restore();
-
-  if (!running) {
-    // Menu attract
-    drawTextCenter(250, 'TILT CATCH', '#e8f6ff', 34);
-    drawTextCenter(295, hasIMU ? 'Motion ready' : 'Enable motion to play', hasIMU ? '#38ff7a' : '#ffcc33', 20);
-    drawTextCenter(340, 'Tilt to move • Catch green • Avoid red', '#8fb8c7', 18);
-
-    // show a demo reticle that follows current tilt (if available)
-    const demoX = 300 + tiltX * 180;
-    const demoY = 300 + tiltY * 180;
-    drawReticle(demoX, demoY);
-
-    return;
-  }
-
-  // Gameplay
-  // Orb pulse
-  if (orb) {
-    orb.pulse += dt * 6.0;
-    const pulseR = orb.r + (Math.sin(orb.pulse) * 2);
-    glowCircle(orb.x, orb.y, pulseR, '#38ff7a', 22, 0.95);
-  }
-
-  // Hazards
-  for (const h of hazards) {
-    glowCircle(h.x, h.y, h.r, '#ff3355', 20, 0.90);
-  }
-
-  // Player
-  drawReticle(player.x, player.y);
-
-  if (paused) {
-    drawTextCenter(300, 'PAUSED', '#ffcc33', 36);
-    drawTextCenter(340, 'Press Enter on Pause to resume', '#8fb8c7', 18);
-  }
-}
-
-/* Update loop */
-function step(now){
-  const dt = Math.min(0.05, (now - tLast) / 1000);
-  tLast = now;
-
-  // Update smoothed tilt each frame (throttle sensor->UI)
-  // Map (gamma,beta) degrees around calibration center into -1..1
-  const nx = clamp((rawGamma - centerGamma) * sensitivity, -1, 1);
-  const ny = clamp((rawBeta  - centerBeta ) * sensitivity, -1, 1);
-  tiltX = lerp(tiltX, nx, smoothing);
-  tiltY = lerp(tiltY, ny, smoothing);
-
-  if (running && !paused) {
-    // Move player (bounded)
-    player.x = clamp(player.x + tiltX * 260 * dt, 20, 580);
-    player.y = clamp(player.y + tiltY * 260 * dt, 20, 580);
-
-    // Desktop fallback nudges (optional): arrow keys set by key handlers below
-    player.x = clamp(player.x + keyNudgeX * 260 * dt, 20, 580);
-    player.y = clamp(player.y + keyNudgeY * 260 * dt, 20, 580);
-
-    // Ensure orb/hazards exist
-    if (!orb) orb = spawnOrb();
-    if (hazards.length < 3) hazards.push(spawnHazard());
-
-    // Move hazards
-    for (const h of hazards) {
-      h.x += h.vx * dt;
-      h.y += h.vy * dt;
-    }
-    hazards = hazards.filter(h => h.x > -60 && h.x < 660 && h.y > -60 && h.y < 660);
-
-    // Collisions
-    // Catch orb
-    if (orb && dist2(player.x,player.y,orb.x,orb.y) < (player.r + orb.r + 6) ** 2) {
-      score += 1;
-      ui.score.textContent = score;
-      orb = spawnOrb();
-
-      // Add difficulty gradually
-      if (score % 3 === 0 && hazards.length < 7) hazards.push(spawnHazard());
-    }
-
-    // Hit hazard -> game over
-    for (const h of hazards) {
-      if (dist2(player.x,player.y,h.x,h.y) < (player.r + h.r + 4) ** 2) {
-        gameOver();
-        break;
-      }
-    }
-  }
-
-  render(dt);
-  requestAnimationFrame(step);
-}
-
-/* ---------------------------
-   IMU permission + listeners
-   Uses standard web APIs:
-   - DeviceOrientationEvent (alpha/beta/gamma) [2](https://developer.mozilla.org/en-US/docs/Web/API/DeviceOrientationEvent)
-   - DeviceMotionEvent (rotationRate/accel) [3](https://developer.mozilla.org/en-US/docs/Web/API/DeviceMotionEvent)
---------------------------- */
 function handleOrientation(e){
-  // beta: -180..180 (front/back); gamma: -90..90 (left/right)
-  if (typeof e.beta === 'number') rawBeta = e.beta;
   if (typeof e.gamma === 'number') rawGamma = e.gamma;
+}
+
+/* Permission + listener start:
+   Some platforms implement requestPermission for motion/orientation. */
+async function requestMotionPermission(){
+  try {
+    let ok = true;
+
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const state = await DeviceOrientationEvent.requestPermission();
+      ok = ok && (state === 'granted');
+    }
+
+    if (typeof DeviceMotionEvent !== 'undefined' &&
+        typeof DeviceMotionEvent.requestPermission === 'function') {
+      const state2 = await DeviceMotionEvent.requestPermission();
+      ok = ok && (state2 === 'granted');
+    }
+
+    if (ok) startIMU();
+    else {
+      ui.status.textContent = 'IMU Denied';
+      ui.subtitle.textContent = 'Motion denied. You can still test with Arrow keys.';
+    }
+  } catch (err) {
+    // If requestPermission path isn't needed/available, start listeners anyway.
+    startIMU();
+  }
 }
 
 function startIMU(){
@@ -448,155 +220,284 @@ function startIMU(){
   ui.status.textContent = 'IMU On';
   ui.btnCal.disabled = false;
   ui.btnStart.disabled = false;
-  ui.subtitle.textContent = 'Calibrate, then Start. Tilt to move.';
+  ui.subtitle.textContent = 'Calibrate, then Start. Tilt left/right to move.';
+  ui.btnCal.focus();
 }
 
-async function requestMotionPermission(){
-  // Some platforms gate sensor access behind requestPermission() [2](https://developer.mozilla.org/en-US/docs/Web/API/DeviceOrientationEvent)[3](https://developer.mozilla.org/en-US/docs/Web/API/DeviceMotionEvent)
-  try {
-    let ok = true;
+function calibrate(){
+  centerGamma = rawGamma;
+  ui.status.textContent = 'Calibrated';
+  ui.subtitle.textContent = 'Calibration set. Tap Start.';
+}
 
-    if (typeof DeviceOrientationEvent !== 'undefined'
-        && typeof DeviceOrientationEvent.requestPermission === 'function') {
-      const state = await DeviceOrientationEvent.requestPermission();
-      ok = ok && (state === 'granted');
-    }
+/* Simple Galaga-like game state */
+let score = 0;
+let lives = 3;
 
-    if (typeof DeviceMotionEvent !== 'undefined'
-        && typeof DeviceMotionEvent.requestPermission === 'function') {
-      const state2 = await DeviceMotionEvent.requestPermission();
-      ok = ok && (state2 === 'granted');
-    }
+const ship = { x: 300, y: 545, w: 28, h: 18, cooldown: 0 };
+let bullets = [];
+let enemyBullets = [];
+let enemies = [];
+let enemyDir = 1;
+let enemySpeed = 26;
+let enemyStepDown = 18;
+let enemyFireTimer = 0;
 
-    if (ok) startIMU();
-    else {
-      ui.status.textContent = 'IMU Denied';
-      ui.subtitle.textContent = 'Motion permission denied. You can still test with Arrow keys on desktop.';
-    }
-  } catch (err) {
-    // Glasses runtime / many Android browsers grant automatically (per your pasted docs)
-    // If requestPermission path fails, try starting listeners anyway.
-    startIMU();
+let tLast = performance.now();
+
+/* Visual helpers */
+function clear(){ ctx.clearRect(0,0,600,600); }
+function glowRect(x,y,w,h,color,blur=18,alpha=1){
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = blur;
+  ctx.fillStyle = color;
+  ctx.fillRect(x,y,w,h);
+  ctx.restore();
+}
+function glowCircle(x,y,r,color,blur=18,alpha=1){
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = blur;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawShip(){
+  // Body
+  glowRect(ship.x - ship.w/2, ship.y - ship.h/2, ship.w, ship.h, '#00d4ff', 18, 0.9);
+  // Wings
+  glowRect(ship.x - ship.w/2 - 10, ship.y - 4, 10, 8, '#38ff7a', 16, 0.8);
+  glowRect(ship.x + ship.w/2,      ship.y - 4, 10, 8, '#38ff7a', 16, 0.8);
+  // Nose
+  glowRect(ship.x - 3, ship.y - ship.h/2 - 6, 6, 8, '#ffcc33', 16, 0.85);
+}
+
+function drawEnemies(){
+  for (const e of enemies){
+    if (!e.alive) continue;
+    const col = e.type === 0 ? '#c86bff' : (e.type === 1 ? '#38ff7a' : '#ffcc33');
+    glowRect(e.x - e.w/2, e.y - e.h/2, e.w, e.h, col, 16, 0.85);
+    // small “eyes”
+    glowRect(e.x - 7, e.y - 2, 4, 4, '#e8f6ff', 10, 0.7);
+    glowRect(e.x + 3, e.y - 2, 4, 4, '#e8f6ff', 10, 0.7);
   }
 }
 
-/* Calibration */
-function calibrate(){
-  centerBeta = rawBeta;
-  centerGamma = rawGamma;
-  ui.status.textContent = 'Calibrated';
-  ui.subtitle.textContent = 'Calibration set. Start when ready.';
+function drawBullets(){
+  for (const b of bullets){
+    glowRect(b.x - 2, b.y - 8, 4, 16, '#e8f6ff', 14, 0.9);
+  }
+  for (const b of enemyBullets){
+    glowRect(b.x - 2, b.y - 6, 4, 12, '#ff3355', 16, 0.9);
+  }
 }
 
-/* Game flow */
+function drawFrame(){
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0,212,255,0.10)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(10,10,580,580);
+  ctx.restore();
+}
+
+function resetWave(){
+  enemies = [];
+  const rows = 4, cols = 8;
+  const startX = 120, startY = 110;
+  const gapX = 44, gapY = 36;
+
+  for (let r=0;r<rows;r++){
+    for (let c=0;c<cols;c++){
+      enemies.push({
+        x: startX + c*gapX,
+        y: startY + r*gapY,
+        w: 22,
+        h: 16,
+        alive: true,
+        type: r % 3
+      });
+    }
+  }
+  enemyDir = 1;
+  enemySpeed = 26;
+  enemyFireTimer = 0;
+  enemyBullets = [];
+}
+
 function startGame(){
-  score = 0;
+  if (!hasIMU) return;
+
+  score = 0; lives = 3;
   ui.score.textContent = score;
+  ui.lives.textContent = lives;
+
+  ship.x = 300;
+  ship.cooldown = 0;
+  bullets = [];
+  resetWave();
+
   running = true;
-  paused = false;
-  orb = spawnOrb();
-  hazards = [spawnHazard(), spawnHazard(), spawnHazard()];
   ui.status.textContent = 'Play';
 
-  // During gameplay, keep a focusable Pause button available for Enter
-  ui.btnPause.classList.remove('hidden');
-  ui.btnPause.textContent = '⏸ Pause';
-  ui.btnPause.focus();
-
-  // Hide the bottom panel text to reduce clutter while playing
-  // (Keep the panel present for focusable controls)
-  ui.panel.style.background = 'rgba(16,18,22,0.55)';
+  ui.btnExit.disabled = false;
+  // Hide menu copy to reduce clutter, keep panel for Exit-only.
   ui.subtitle.classList.add('hidden');
   ui.btnEnable.classList.add('hidden');
   ui.btnCal.classList.add('hidden');
   ui.btnStart.classList.add('hidden');
+
+  ui.btnExit.focus();
 }
 
-function togglePause(){
-  if (!running) return;
-  paused = !paused;
-  ui.status.textContent = paused ? 'Paused' : 'Play';
-  ui.btnPause.textContent = paused ? '▶ Resume' : '⏸ Pause';
-  ui.btnPause.focus();
-}
-
-function gameOver(){
+function exitGame(){
   running = false;
-  paused = false;
-  ui.status.textContent = 'Game Over';
+  ui.status.textContent = 'Menu';
 
-  if (score > best) {
-    best = score;
-    localStorage.setItem(BEST_KEY, String(best));
-    ui.best.textContent = best;
-  }
-
-  // Restore menu UI
-  ui.panel.style.background = 'rgba(16,18,22,0.84)';
   ui.subtitle.classList.remove('hidden');
   ui.btnEnable.classList.remove('hidden');
   ui.btnCal.classList.remove('hidden');
   ui.btnStart.classList.remove('hidden');
-  ui.btnPause.classList.add('hidden');
 
-  ui.subtitle.textContent = `Game over. Score ${score}. Calibrate & Start again.`;
+  ui.btnExit.disabled = !hasIMU ? true : false;
+
+  ui.subtitle.textContent = hasIMU
+    ? 'Enable motion done. Tilt to move. Tap (Enter) to shoot.'
+    : 'Press Enable Motion first (permission required).';
+
+  ui.btnStart.textContent = '▶ Start';
+  ui.btnEnable.focus();
+}
+
+function gameOver(){
+  running = false;
+  ui.status.textContent = 'Game Over';
+  ui.subtitle.classList.remove('hidden');
+  ui.btnEnable.classList.remove('hidden');
+  ui.btnCal.classList.remove('hidden');
+  ui.btnStart.classList.remove('hidden');
+  ui.btnExit.disabled = false;
+
   ui.btnStart.textContent = '↻ Restart';
+  ui.subtitle.textContent = `Game over. Score ${score}. Tap Restart.`;
   ui.btnStart.focus();
 }
 
-/* Button actions */
-ui.btnEnable.addEventListener('click', requestMotionPermission);
-ui.btnCal.addEventListener('click', calibrate);
-ui.btnStart.addEventListener('click', () => {
-  if (!hasIMU) return;
-  calibrate(); // safe default: set center right before play
-  startGame();
-});
-ui.btnPause.addEventListener('click', togglePause);
+function winWave(){
+  // quick difficulty bump and new wave
+  score += 50;
+  ui.score.textContent = score;
+  enemySpeed = Math.min(60, enemySpeed + 6);
+  resetWave();
+}
 
-/* Key handling:
-   - In menus: Arrow keys move focus, Enter clicks focused button (MRBD gesture model).
-   - In gameplay: Enter toggles pause via focused Pause button.
-*/
-let keyNudgeX = 0;
-let keyNudgeY = 0;
+function shoot(){
+  if (!running) return;
+  if (ship.cooldown > 0) return;
 
-document.addEventListener('keydown', (e) => {
-  // Gameplay: use arrows as desktop fallback nudges (won't exist on MRBD as a keyboard,
-  // but arrow events can still come from gestures; we treat them as tiny nudges).
-  if (running && !paused) {
-    if (e.key === DPAD.LEFT)  { keyNudgeX = -0.55; e.preventDefault(); return; }
-    if (e.key === DPAD.RIGHT) { keyNudgeX =  0.55; e.preventDefault(); return; }
-    if (e.key === DPAD.UP)    { keyNudgeY = -0.55; e.preventDefault(); return; }
-    if (e.key === DPAD.DOWN)  { keyNudgeY =  0.55; e.preventDefault(); return; }
-    if (e.key === DPAD.SELECT) { togglePause(); e.preventDefault(); return; }
-    if (e.key === DPAD.BACK)   { gameOver(); e.preventDefault(); return; }
+  bullets.push({ x: ship.x, y: ship.y - 18, vy: -420 });
+  ship.cooldown = 0.18; // seconds
+}
+
+/* Collision helpers */
+function rectHit(ax,ay,aw,ah, bx,by,bw,bh){
+  return Math.abs(ax-bx) * 2 < (aw+bw) && Math.abs(ay-by) * 2 < (ah+bh);
+}
+
+function update(dt){
+  // Smooth tilt -> normalized -1..1
+  const nx = clamp((rawGamma - centerGamma) * sensitivity, -1, 1);
+  tiltX = lerp(tiltX, nx, smoothing);
+
+  if (!running) return;
+
+  // Ship move (gyro) + optional arrow fallback nudge
+  ship.x = clamp(ship.x + (tiltX + keyNudgeX) * 320 * dt, 24, 576);
+
+  // Cooldown
+  ship.cooldown = Math.max(0, ship.cooldown - dt);
+
+  // Bullets
+  for (const b of bullets) b.y += b.vy * dt;
+  bullets = bullets.filter(b => b.y > -40);
+
+  for (const b of enemyBullets) b.y += b.vy * dt;
+  enemyBullets = enemyBullets.filter(b => b.y < 660);
+
+  // Enemies move
+  let minX = Infinity, maxX = -Infinity;
+  for (const e of enemies){
+    if (!e.alive) continue;
+    e.x += enemyDir * enemySpeed * dt;
+    minX = Math.min(minX, e.x - e.w/2);
+    maxX = Math.max(maxX, e.x + e.w/2);
+  }
+  if (minX < 30 || maxX > 570){
+    enemyDir *= -1;
+    for (const e of enemies){
+      if (!e.alive) continue;
+      e.y += enemyStepDown;
+      // If they reach the ship line, you lose
+      if (e.y > 490) { gameOver(); return; }
+    }
   }
 
-  // Menu / paused: focus navigation
-  switch (e.key) {
-    case DPAD.UP:     moveFocus('up');    break;
-    case DPAD.DOWN:   moveFocus('down');  break;
-    case DPAD.LEFT:   moveFocus('left');  break;
-    case DPAD.RIGHT:  moveFocus('right'); break;
-    case DPAD.SELECT:
-      if (document.activeElement && document.activeElement.classList.contains('focusable')) {
-        document.activeElement.click();
+  // Enemy fire (simple timer)
+  enemyFireTimer -= dt;
+  if (enemyFireTimer <= 0){
+    enemyFireTimer = 0.55 + Math.random() * 0.55;
+    // Pick a random alive enemy (bias toward lower rows)
+    const alive = enemies.filter(e => e.alive);
+    if (alive.length){
+      alive.sort((a,b)=>b.y-a.y);
+      const pick = alive[Math.floor(Math.random() * Math.min(10, alive.length))];
+      enemyBullets.push({ x: pick.x, y: pick.y + 10, vy: 260 });
+    }
+  }
+
+  // Bullet vs enemy collisions
+  for (const b of bullets){
+    for (const e of enemies){
+      if (!e.alive) continue;
+      if (rectHit(b.x, b.y, 6, 16, e.x, e.y, e.w, e.h)){
+        e.alive = false;
+        b.y = -9999; // remove bullet
+        score += 10;
+        ui.score.textContent = score;
+        break;
       }
-      break;
-    default: return;
+    }
   }
-  e.preventDefault();
-});
+  bullets = bullets.filter(b => b.y > -500);
 
-document.addEventListener('keyup', (e) => {
-  if (e.key === DPAD.LEFT || e.key === DPAD.RIGHT) keyNudgeX = 0;
-  if (e.key === DPAD.UP || e.key === DPAD.DOWN) keyNudgeY = 0;
-});
+  // Enemy bullets vs ship
+  for (const b of enemyBullets){
+    if (rectHit(b.x, b.y, 6, 12, ship.x, ship.y, ship.w, ship.h)){
+      b.y = 9999;
+      lives -= 1;
+      ui.lives.textContent = lives;
+      // brief “respawn” by clearing bullets
+      bullets = [];
+      enemyBullets = enemyBullets.filter(x => x.y < 900);
+      ship.cooldown = 0.35;
+      if (lives <= 0) { gameOver(); return; }
+    }
+  }
+  enemyBullets = enemyBullets.filter(b => b.y < 900);
 
-/* Boot */
-ui.btnEnable.focus();
-requestAnimationFrame(step);
-</script>
-</body>
-</html>
+  // Win condition
+  if (enemies.every(e => !e.alive)) winWave();
+}
+
+function render(){
+  clear();
+  drawFrame();
+
+  if (!running){
+    // subtle attract reticle showing tilt
+    const demoX = 300 + tiltX * 190;
