@@ -1,690 +1,190 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=600, height=600, initial-scale=1.0, user-scalable=no">
-  <title>TiltGala (MRBD)</title>
-  <style>
-    :root{
-      --bg:#000;            /* black = transparent on additive display */
-      --panel:#101216;
-      --panel2:#1c1e21;
-      --text:#e8f6ff;
-      --dim:#8fb8c7;
-      --cyan:#00d4ff;
-      --green:#38ff7a;
-      --red:#ff3355;
-      --amber:#ffcc33;
-      --mag:#c86bff;
-    }
+<meta name="viewport" content="width=600, height=600">
+<style>
+body { margin:0; background:black; overflow:hidden; width:600px; height:600px; color:#e8f6ff; font-family:sans-serif;}
+canvas { display:block; }
 
-    html, body {
-      width: 600px;
-      height: 600px;
-      margin: 0;
-      overflow: hidden;
-      background: var(--bg);
-      color: var(--text);
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-    }
-
-    #app { position: relative; width: 600px; height: 600px; }
-    canvas { display:block; width:600px; height:600px; background:var(--bg); }
-
-    #hud {
-      position:absolute; top:0; left:0; right:0;
-      padding: 12px 16px;
-      display:flex; justify-content: space-between; align-items:center;
-      gap: 12px;
-      pointer-events:none;
-    }
-    .pill {
-      background: rgba(16,18,22,0.78);
-      border: 1px solid rgba(0,212,255,0.25);
-      box-shadow: 0 0 14px rgba(0,212,255,0.12);
-      border-radius: 999px;
-      padding: 8px 12px;
-      font-size: 18px;
-      line-height: 1;
-      white-space: nowrap;
-    }
-    .pill strong { color: var(--cyan); font-weight: 900; }
-
-    #panel {
-      position:absolute;
-      left:16px; right:16px; bottom:16px;
-      background: rgba(16,18,22,0.84);
-      border: 1px solid rgba(0,212,255,0.30);
-      border-radius: 18px;
-      box-shadow: 0 0 22px rgba(0,212,255,0.16);
-      padding: 14px;
-    }
-    #title { margin:0 0 8px 0; font-size:24px; font-weight:900; }
-    #subtitle { margin:0 0 12px 0; font-size:16px; color:var(--dim); }
-
-    .row { display:flex; gap:10px; flex-wrap:wrap; }
-
-    .focusable {
-      min-height: 88px;
-      padding: 10px 12px;
-      border-radius: 16px;
-      border: 2px solid transparent;
-      background: rgba(28,30,33,0.92);
-      color: var(--text);
-      font-size: 18px;
-      font-weight: 800;
-      flex: 1 1 45%;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      gap: 10px;
-      user-select:none;
-    }
-    .focusable:focus {
-      outline:none;
-      border-color: var(--cyan);
-      box-shadow: 0 0 22px rgba(0,212,255,0.45);
-    }
-    .focusable[disabled]{ opacity:0.45; }
-
-    .hint {
-      margin-top:10px;
-      font-size:16px;
-      color: var(--dim);
-      display:flex;
-      justify-content: space-between;
-      gap: 10px;
-    }
-    .hidden { display:none !important; }
-  </style>
+.focusable{
+  background:#1c1e21;
+  border:2px solid transparent;
+  min-height:80px;
+  margin:8px;
+  padding:10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:18px;
+}
+.focusable:focus{
+  border-color:#00d4ff;
+  box-shadow:0 0 20px #00d4ff;
+}
+</style>
 </head>
 
 <body>
-<div id="app">
-  <canvas id="c" width="600" height="600" aria-label="TiltGala game canvas"></canvas>
+<canvas id="c" width="600" height="600"></canvas>
 
-  <div id="hud">
-    <div class="pill">Score <strong id="score">0</strong></div>
-    <div class="pill">Lives <strong id="lives">3</strong></div>
-    <div class="pill"><span id="status">Menu</span></div>
-  </div>
-
-  <div id="panel">
-    <p id="title">TiltGala</p>
-    <p id="subtitle">Enable motion. Tilt to move. Tap (Enter) to shoot.</p>
-
-    <div class="row">
-      <button id="btnEnable" class="focusable" data-action="enable">🧭 Enable Motion</button>
-      <button id="btnCal" class="focusable" data-action="calibrate" disabled>🎯 Calibrate</button>
-      <button id="btnStart" class="focusable" data-action="start" disabled>▶ Start</button>
-      <button id="btnExit" class="focusable" data-action="exit" disabled>⟵ Exit Game</button>
-    </div>
-
-    <div class="hint">
-      <span>Gameplay: Enter = Shoot</span>
-      <span>Back: Escape exits</span>
-    </div>
-  </div>
+<div id="menu">
+  <button id="enable" class="focusable">Enable Motion</button>
+  <button id="start" class="focusable" disabled>Start</button>
 </div>
 
 <script>
-/* Input model: Arrow keys + Enter (MRBD gestures map here). Many MRBD resources describe Enter/Tap as the activate action. */
-const DPAD = {
-  UP: 'ArrowUp', DOWN: 'ArrowDown',
-  LEFT: 'ArrowLeft', RIGHT: 'ArrowRight',
-  SELECT: 'Enter', BACK: 'Escape',
-};
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
 
-function moveFocus(direction) {
-  const focusables = Array.from(document.querySelectorAll('.focusable:not([disabled]):not(.hidden)'));
-  if (!focusables.length) return;
-
-  const idx = focusables.indexOf(document.activeElement);
-  if (idx === -1) { focusables[0].focus(); return; }
-
-  const next = (direction === 'up' || direction === 'left')
-    ? (idx > 0 ? idx - 1 : focusables.length - 1)
-    : (idx < focusables.length - 1 ? idx + 1 : 0);
-
-  focusables[next].focus();
-  focusables[next].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-}
-
-const $ = (id) => document.getElementById(id);
-const canvas = $('c');
-const ctx = canvas.getContext('2d', { alpha: true });
-
-const ui = {
-  score: $('score'),
-  lives: $('lives'),
-  status: $('status'),
-  subtitle: $('subtitle'),
-  panel: $('panel'),
-  btnEnable: $('btnEnable'),
-  btnCal: $('btnCal'),
-  btnStart: $('btnStart'),
-  btnExit: $('btnExit'),
-};
-
-let hasIMU = false;
 let running = false;
+let hasIMU = false;
 
-/* Orientation values:
-   gamma = left/right tilt (-90..90), beta = front/back (-180..180). We'll use gamma for horizontal control. */
-let rawGamma = 0;
-let centerGamma = 0;
+let gamma = 0;
+let center = 0;
+let playerX = 300;
 
-let tiltX = 0;           // smoothed -1..1
-let sensitivity = 0.020; // deg -> normalized scale
-let smoothing = 0.20;    // lerp factor
+let bullets = [];
+let enemies = [];
 
-const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
-const lerp = (a,b,t)=>a+(b-a)*t;
+const DPAD = {
+  UP:"ArrowUp",DOWN:"ArrowDown",
+  LEFT:"ArrowLeft",RIGHT:"ArrowRight",
+  SELECT:"Enter"
+};
 
-function handleOrientation(e){
-  if (typeof e.gamma === 'number') rawGamma = e.gamma;
+function ensureFocus(){
+  const f = document.activeElement;
+  if(!f || !f.classList.contains("focusable")){
+    const first = document.querySelector(".focusable:not([disabled])");
+    if(first) first.focus();
+  }
 }
 
-/* Permission + listener start:
-   Some platforms implement requestPermission for motion/orientation. */
-async function requestMotionPermission(){
-  try {
-    let ok = true;
+function moveFocus(dir){
+  const list = [...document.querySelectorAll(".focusable:not([disabled])")];
+  let i = list.indexOf(document.activeElement);
+  if(i===-1){list[0].focus();return;}
+  let next = (dir==="prev") ? (i-1+list.length)%list.length : (i+1)%list.length;
+  list[next].focus();
+}
 
-    if (typeof DeviceOrientationEvent !== 'undefined' &&
-        typeof DeviceOrientationEvent.requestPermission === 'function') {
-      const state = await DeviceOrientationEvent.requestPermission();
-      ok = ok && (state === 'granted');
-    }
+document.addEventListener("keydown",(e)=>{
+  ensureFocus();
 
-    if (typeof DeviceMotionEvent !== 'undefined' &&
-        typeof DeviceMotionEvent.requestPermission === 'function') {
-      const state2 = await DeviceMotionEvent.requestPermission();
-      ok = ok && (state2 === 'granted');
-    }
+  // gameplay
+  if(running){
+    if(e.key===DPAD.SELECT){ shoot(); return; }
+    return;
+  }
 
-    if (ok) startIMU();
-    else {
-      ui.status.textContent = 'IMU Denied';
-      ui.subtitle.textContent = 'Motion denied. You can still test with Arrow keys.';
-    }
-  } catch (err) {
-    // If requestPermission path isn't needed/available, start listeners anyway.
+  // menu
+  if(e.key===DPAD.LEFT || e.key===DPAD.UP){ moveFocus("prev"); }
+  if(e.key===DPAD.RIGHT || e.key===DPAD.DOWN){ moveFocus("next"); }
+
+  if(e.key===DPAD.SELECT){
+    document.activeElement.click();
+  }
+});
+
+// ✅ HARD safety loop
+setInterval(ensureFocus, 1000);
+
+function requestMotion(){
+  if(typeof DeviceOrientationEvent.requestPermission==="function"){
+    DeviceOrientationEvent.requestPermission().then(s=>{
+      if(s==="granted") startIMU();
+    });
+  } else {
     startIMU();
   }
 }
 
 function startIMU(){
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=600, height=600, initial-scale=1.0, user-scalable=no">
-  <title>TiltGala (MRBD)</title>
+  window.addEventListener("deviceorientation",(e)=>{
+    gamma = e.gamma || 0;
+  });
 
-  <style>
-    :root{
-      --bg:#000;            /* black = transparent on additive display */
-      --panel:#101216;
-      --panel2:#1c1e21;
-      --text:#e8f6ff;
-      --dim:#8fb8c7;
-      --cyan:#00d4ff;
-      --green:#38ff7a;
-      --red:#ff3355;
-      --amber:#ffcc33;
-      --mag:#c86bff;
-    }
+  hasIMU=true;
+  document.getElementById("start").disabled=false;
 
-    html, body {
-      width: 600px;
-      height: 600px;
-      margin: 0;
-      overflow: hidden;
-      background: var(--bg);
-      color: var(--text);
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-    }
+  // ✅ FIX: force focus forward
+  document.getElementById("start").focus();
+  setTimeout(()=>document.getElementById("start").focus(),50);
+}
 
-    #app { position: relative; width: 600px; height: 600px; }
-    canvas { display:block; width:600px; height:600px; background:var(--bg); }
+document.getElementById("enable").onclick = ()=>{
+  requestMotion();
 
-    #hud {
-      position:absolute; top:0; left:0; right:0;
-      padding: 12px 16px;
-      display:flex; justify-content: space-between; align-items:center;
-      gap: 12px;
-      pointer-events:none;
-    }
-
-    .pill {
-      background: rgba(16,18,22,0.78);
-      border: 1px solid rgba(0,212,255,0.25);
-      box-shadow: 0 0 14px rgba(0,212,255,0.12);
-      border-radius: 999px;
-      padding: 8px 12px;
-      font-size: 18px;
-      line-height: 1;
-      white-space: nowrap;
-    }
-    .pill strong { color: var(--cyan); font-weight: 900; }
-
-    #panel {
-      position:absolute;
-      left:16px; right:16px; bottom:16px;
-      background: rgba(16,18,22,0.84);
-      border: 1px solid rgba(0,212,255,0.30);
-      border-radius: 18px;
-      box-shadow: 0 0 22px rgba(0,212,255,0.16);
-      padding: 14px;
-    }
-    #title { margin:0 0 8px 0; font-size:24px; font-weight:900; }
-    #subtitle { margin:0 0 12px 0; font-size:16px; color:var(--dim); }
-
-    .row { display:flex; gap:10px; flex-wrap:wrap; }
-
-    /* Focusable contract: all interactive elements must be reachable via arrows + Enter */
-    .focusable {
-      min-height: 88px;
-      padding: 10px 12px;
-      border-radius: 16px;
-      border: 2px solid transparent;
-      background: rgba(28,30,33,0.92);
-      color: var(--text);
-      font-size: 18px;
-      font-weight: 800;
-      flex: 1 1 45%;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      gap: 10px;
-      user-select:none;
-    }
-    .focusable:focus {
-      outline:none;
-      border-color: var(--cyan);
-      box-shadow: 0 0 22px rgba(0,212,255,0.45);
-    }
-    .focusable[disabled]{ opacity:0.45; }
-
-    .hint {
-      margin-top:10px;
-      font-size:16px;
-      color: var(--dim);
-      display:flex;
-      justify-content: space-between;
-      gap: 10px;
-    }
-
-    .hidden { display:none !important; }
-  </style>
-</head>
-
-<body>
-<div id="app">
-  <canvas id="c" width="600" height="600" aria-label="TiltGala game canvas"></canvas>
-
-  <div id="hud">
-    <div class="pill">Score <strong id="score">0</strong></div>
-    <div class="pill">Lives <strong id="lives">3</strong></div>
-    <div class="pill"><span id="status">Menu</span></div>
-  </div>
-
-  <div id="panel" role="region" aria-label="Game controls">
-    <p id="title">TiltGala</p>
-    <p id="subtitle">Enable motion. Tilt to move. Tap (Enter) to shoot.</p>
-
-    <div class="row">
-      <button id="btnEnable" class="focusable" data-action="enable">🧭 Enable Motion</button>
-      <button id="btnCal" class="focusable" data-action="calibrate" disabled>🎯 Calibrate</button>
-      <button id="btnStart" class="focusable" data-action="start" disabled>▶ Start</button>
-      <button id="btnExit" class="focusable" data-action="exit" disabled>⟵ Exit Game</button>
-    </div>
-
-    <div class="hint">
-      <span>Menu: Arrows = focus • Enter = activate</span>
-      <span>Gameplay: Enter = shoot • Esc = exit</span>
-    </div>
-  </div>
-</div>
-
-<script>
-/* ------------------------------------------------------------
-   MRBD Input Model
-   - D-pad gestures map to Arrow keys
-   - Tap/Select maps to Enter
-   This matches common MRBD templates and examples. [1](https://www.linkedin.com/learning/managed-detection-and-response-mdr-fundamentals?dApp=204528272&leis=MVL)[2](https://activision-my.sharepoint.com/personal/kworrel_treyarch_com/_layouts/15/Doc.aspx?sourcedoc=%7B97EBB917-3EB7-4C07-8BA0-ADABB86FB45B%7D&file=Level%20Art%20Schedule%202024.xlsx&action=default&mobileredirect=true&DefaultItemOpen=1)
-------------------------------------------------------------- */
-const DPAD = {
-  UP: 'ArrowUp', DOWN: 'ArrowDown',
-  LEFT: 'ArrowLeft', RIGHT: 'ArrowRight',
-  SELECT: 'Enter', BACK: 'Escape',
+  // ✅ ensure we reset input state
+  running = false;
 };
 
-const $ = (id) => document.getElementById(id);
-const canvas = $('c');
-const ctx = canvas.getContext('2d', { alpha: true });
-
-const ui = {
-  score: $('score'),
-  lives: $('lives'),
-  status: $('status'),
-  subtitle: $('subtitle'),
-  btnEnable: $('btnEnable'),
-  btnCal: $('btnCal'),
-  btnStart: $('btnStart'),
-  btnExit: $('btnExit'),
-};
-
-function getFocusables() {
-  return Array.from(document.querySelectorAll('.focusable:not([disabled]):not(.hidden)'));
-}
-
-/* Focus safety net: if focus is lost (common after permission prompts), restore it. */
-function ensureFocus() {
-  const ae = document.activeElement;
-  const lost = !ae || ae === document.body || !ae.classList || !ae.classList.contains('focusable');
-  if (lost) {
-    const focusables = getFocusables();
-    if (focusables.length) focusables[0].focus();
-  }
-}
-
-/* Move focus in a simple loop order (works well for small MRBD menus). */
-function moveFocus(direction) {
-  const focusables = getFocusables();
-  if (!focusables.length) return;
-
-  const idx = focusables.indexOf(document.activeElement);
-  if (idx === -1) { focusables[0].focus(); return; }
-
-  const back = (direction === 'up' || direction === 'left');
-  const next = back
-    ? (idx > 0 ? idx - 1 : focusables.length - 1)
-    : (idx < focusables.length - 1 ? idx + 1 : 0);
-
-  hasIMU = true;
-  ui.status.textContent = 'IMU On';
-  ui.btnCal.disabled = false;
-  ui.btnStart.disabled = false;
-  ui.subtitle.textContent = 'Calibrate, then Start. Tilt left/right to move.';
-  ui.btnCal.focus();
-}
-
-function calibrate(){
-  centerGamma = rawGamma;
-  ui.status.textContent = 'Calibrated';
-  ui.subtitle.textContent = 'Calibration set. Tap Start.';
-}
-
-/* Simple Galaga-like game state */
-let score = 0;
-let lives = 3;
-
-const ship = { x: 300, y: 545, w: 28, h: 18, cooldown: 0 };
-let bullets = [];
-let enemyBullets = [];
-let enemies = [];
-let enemyDir = 1;
-let enemySpeed = 26;
-let enemyStepDown = 18;
-let enemyFireTimer = 0;
-
-let tLast = performance.now();
-
-/* Visual helpers */
-function clear(){ ctx.clearRect(0,0,600,600); }
-function glowRect(x,y,w,h,color,blur=18,alpha=1){
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = blur;
-  ctx.fillStyle = color;
-  ctx.fillRect(x,y,w,h);
-  ctx.restore();
-}
-function glowCircle(x,y,r,color,blur=18,alpha=1){
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = blur;
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(x,y,r,0,Math.PI*2);
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawShip(){
-  // Body
-  glowRect(ship.x - ship.w/2, ship.y - ship.h/2, ship.w, ship.h, '#00d4ff', 18, 0.9);
-  // Wings
-  glowRect(ship.x - ship.w/2 - 10, ship.y - 4, 10, 8, '#38ff7a', 16, 0.8);
-  glowRect(ship.x + ship.w/2,      ship.y - 4, 10, 8, '#38ff7a', 16, 0.8);
-  // Nose
-  glowRect(ship.x - 3, ship.y - ship.h/2 - 6, 6, 8, '#ffcc33', 16, 0.85);
-}
-
-function drawEnemies(){
-  for (const e of enemies){
-    if (!e.alive) continue;
-    const col = e.type === 0 ? '#c86bff' : (e.type === 1 ? '#38ff7a' : '#ffcc33');
-    glowRect(e.x - e.w/2, e.y - e.h/2, e.w, e.h, col, 16, 0.85);
-    // small “eyes”
-    glowRect(e.x - 7, e.y - 2, 4, 4, '#e8f6ff', 10, 0.7);
-    glowRect(e.x + 3, e.y - 2, 4, 4, '#e8f6ff', 10, 0.7);
-  }
-}
-
-function drawBullets(){
-  for (const b of bullets){
-    glowRect(b.x - 2, b.y - 8, 4, 16, '#e8f6ff', 14, 0.9);
-  }
-  for (const b of enemyBullets){
-    glowRect(b.x - 2, b.y - 6, 4, 12, '#ff3355', 16, 0.9);
-  }
-}
-
-function drawFrame(){
-  ctx.save();
-  ctx.strokeStyle = 'rgba(0,212,255,0.10)';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(10,10,580,580);
-  ctx.restore();
-}
-
-function resetWave(){
-  enemies = [];
-  const rows = 4, cols = 8;
-  const startX = 120, startY = 110;
-  const gapX = 44, gapY = 36;
-
-  for (let r=0;r<rows;r++){
-    for (let c=0;c<cols;c++){
-      enemies.push({
-        x: startX + c*gapX,
-        y: startY + r*gapY,
-        w: 22,
-        h: 16,
-        alive: true,
-        type: r % 3
-      });
-    }
-  }
-  enemyDir = 1;
-  enemySpeed = 26;
-  enemyFireTimer = 0;
-  enemyBullets = [];
-}
-
-function startGame(){
-  if (!hasIMU) return;
-
-  score = 0; lives = 3;
-  ui.score.textContent = score;
-  ui.lives.textContent = lives;
-
-  ship.x = 300;
-  ship.cooldown = 0;
-  bullets = [];
-  resetWave();
-
+document.getElementById("start").onclick = ()=>{
+  center = gamma;
   running = true;
-  ui.status.textContent = 'Play';
-
-  ui.btnExit.disabled = false;
-  // Hide menu copy to reduce clutter, keep panel for Exit-only.
-  ui.subtitle.classList.add('hidden');
-  ui.btnEnable.classList.add('hidden');
-  ui.btnCal.classList.add('hidden');
-  ui.btnStart.classList.add('hidden');
-
-  ui.btnExit.focus();
-}
-
-function exitGame(){
-  running = false;
-  ui.status.textContent = 'Menu';
-
-  ui.subtitle.classList.remove('hidden');
-  ui.btnEnable.classList.remove('hidden');
-  ui.btnCal.classList.remove('hidden');
-  ui.btnStart.classList.remove('hidden');
-
-  ui.btnExit.disabled = !hasIMU ? true : false;
-
-  ui.subtitle.textContent = hasIMU
-    ? 'Enable motion done. Tilt to move. Tap (Enter) to shoot.'
-    : 'Press Enable Motion first (permission required).';
-
-  ui.btnStart.textContent = '▶ Start';
-  ui.btnEnable.focus();
-}
-
-function gameOver(){
-  running = false;
-  ui.status.textContent = 'Game Over';
-  ui.subtitle.classList.remove('hidden');
-  ui.btnEnable.classList.remove('hidden');
-  ui.btnCal.classList.remove('hidden');
-  ui.btnStart.classList.remove('hidden');
-  ui.btnExit.disabled = false;
-
-  ui.btnStart.textContent = '↻ Restart';
-  ui.subtitle.textContent = `Game over. Score ${score}. Tap Restart.`;
-  ui.btnStart.focus();
-}
-
-function winWave(){
-  // quick difficulty bump and new wave
-  score += 50;
-  ui.score.textContent = score;
-  enemySpeed = Math.min(60, enemySpeed + 6);
-  resetWave();
-}
+  document.getElementById("menu").style.display="none";
+};
 
 function shoot(){
-  if (!running) return;
-  if (ship.cooldown > 0) return;
-
-  bullets.push({ x: ship.x, y: ship.y - 18, vy: -420 });
-  ship.cooldown = 0.18; // seconds
+  bullets.push({x:playerX, y:520});
 }
 
-/* Collision helpers */
-function rectHit(ax,ay,aw,ah, bx,by,bw,bh){
-  return Math.abs(ax-bx) * 2 < (aw+bw) && Math.abs(ay-by) * 2 < (ah+bh);
+function spawnEnemies(){
+  enemies=[];
+  for(let i=0;i<6;i++){
+    enemies.push({x:100+i*70, y:80});
+  }
 }
 
-function update(dt){
-  // Smooth tilt -> normalized -1..1
-  const nx = clamp((rawGamma - centerGamma) * sensitivity, -1, 1);
-  tiltX = lerp(tiltX, nx, smoothing);
+spawnEnemies();
 
-  if (!running) return;
+function update(){
+  if(!running) return;
 
-  // Ship move (gyro) + optional arrow fallback nudge
-  ship.x = clamp(ship.x + (tiltX + keyNudgeX) * 320 * dt, 24, 576);
+  let tilt = (gamma-center)*0.05;
+  playerX += tilt*10;
+  playerX = Math.max(20, Math.min(580, playerX));
 
-  // Cooldown
-  ship.cooldown = Math.max(0, ship.cooldown - dt);
+  bullets.forEach(b=>b.y-=10);
 
-  // Bullets
-  for (const b of bullets) b.y += b.vy * dt;
-  bullets = bullets.filter(b => b.y > -40);
+  bullets = bullets.filter(b=>b.y>0);
 
-  for (const b of enemyBullets) b.y += b.vy * dt;
-  enemyBullets = enemyBullets.filter(b => b.y < 660);
-
-  // Enemies move
-  let minX = Infinity, maxX = -Infinity;
-  for (const e of enemies){
-    if (!e.alive) continue;
-    e.x += enemyDir * enemySpeed * dt;
-    minX = Math.min(minX, e.x - e.w/2);
-    maxX = Math.max(maxX, e.x + e.w/2);
-  }
-  if (minX < 30 || maxX > 570){
-    enemyDir *= -1;
-    for (const e of enemies){
-      if (!e.alive) continue;
-      e.y += enemyStepDown;
-      // If they reach the ship line, you lose
-      if (e.y > 490) { gameOver(); return; }
-    }
-  }
-
-  // Enemy fire (simple timer)
-  enemyFireTimer -= dt;
-  if (enemyFireTimer <= 0){
-    enemyFireTimer = 0.55 + Math.random() * 0.55;
-    // Pick a random alive enemy (bias toward lower rows)
-    const alive = enemies.filter(e => e.alive);
-    if (alive.length){
-      alive.sort((a,b)=>b.y-a.y);
-      const pick = alive[Math.floor(Math.random() * Math.min(10, alive.length))];
-      enemyBullets.push({ x: pick.x, y: pick.y + 10, vy: 260 });
-    }
-  }
-
-  // Bullet vs enemy collisions
-  for (const b of bullets){
-    for (const e of enemies){
-      if (!e.alive) continue;
-      if (rectHit(b.x, b.y, 6, 16, e.x, e.y, e.w, e.h)){
-        e.alive = false;
-        b.y = -9999; // remove bullet
-        score += 10;
-        ui.score.textContent = score;
-        break;
-      }
-    }
-  }
-  bullets = bullets.filter(b => b.y > -500);
-
-  // Enemy bullets vs ship
-  for (const b of enemyBullets){
-    if (rectHit(b.x, b.y, 6, 12, ship.x, ship.y, ship.w, ship.h)){
-      b.y = 9999;
-      lives -= 1;
-      ui.lives.textContent = lives;
-      // brief “respawn” by clearing bullets
-      bullets = [];
-      enemyBullets = enemyBullets.filter(x => x.y < 900);
-      ship.cooldown = 0.35;
-      if (lives <= 0) { gameOver(); return; }
-    }
-  }
-  enemyBullets = enemyBullets.filter(b => b.y < 900);
-
-  // Win condition
-  if (enemies.every(e => !e.alive)) winWave();
+  enemies.forEach(e=>{
+    e.y += 0.2;
+  });
 }
 
-function render(){
-  clear();
-  drawFrame();
+function draw(){
+  ctx.clearRect(0,0,600,600);
 
-  if (!running){
-    // subtle attract reticle showing tilt
-    const demoX = 300 + tiltX * 190;
+  if(running){
+    // player
+    ctx.fillStyle="#00d4ff";
+    ctx.fillRect(playerX-10,540,20,10);
+
+    // bullets
+    ctx.fillStyle="#fff";
+    bullets.forEach(b=>{
+      ctx.fillRect(b.x-2,b.y,4,10);
+    });
+
+    // enemies
+    ctx.fillStyle="#ff3355";
+    enemies.forEach(e=>{
+      ctx.fillRect(e.x-12,e.y-8,24,16);
+    });
+  }
+}
+
+function loop(){
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+document.getElementById("enable").focus();
+loop();
+</script>
+
+</body>
+</html>
