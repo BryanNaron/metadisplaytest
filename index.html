@@ -734,6 +734,34 @@ function draw(){
   const playerY = 540;
 
   // PLAYER
+
+// -------- AIM LINE GUIDE --------
+if (running) {
+
+  ctx.save();
+
+  const aimStartY = playerY - 5;
+  const aimEndY = 40;
+
+  // ✅ line direction (centered for now)
+  const aimX = playerX;
+
+  // ✅ gradient fade (strong near player → fades upward)
+  const grad = ctx.createLinearGradient(aimX, aimStartY, aimX, aimEndY);
+  grad.addColorStop(0, "rgba(255,255,255,0.35)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = 2;
+
+  ctx.beginPath();
+  ctx.moveTo(aimX, aimStartY);
+  ctx.lineTo(aimX, aimEndY);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
   ctx.fillStyle = '#00d4ff';
   ctx.fillRect(playerX - 10, playerY, 20, 10);
 
@@ -828,17 +856,30 @@ if (isReloading) {
     ctx.fillStyle = '#ffd400';
     ctx.fillRect(p.x - p.w/2, p.y - p.h/2, p.w, p.h);
 
-    // subtle outline when aimed
-    if (isAimed) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(
-        p.x - p.w/2 - 1,
-        p.y - p.h/2 - 1,
-        p.w + 2,
-        p.h + 2
-      );
-    }
+// -------- STRONG AIM OUTLINE --------
+if (isAimed) {
+
+  ctx.save();
+
+  // ✅ brighter color
+  ctx.strokeStyle = '#ffffff';
+
+  // ✅ thicker outline (much easier to see)
+  ctx.lineWidth = 3;
+
+  // ✅ glow effect
+  ctx.shadowColor = '#ffffff';
+  ctx.shadowBlur = 10;
+
+  ctx.strokeRect(
+    p.x - p.w/2 - 2,
+    p.y - p.h/2 - 2,
+    p.w + 4,
+    p.h + 4
+  );
+
+  ctx.restore();
+}
 
     // LABEL (two-line, flat values)
     let labelTop = "";
