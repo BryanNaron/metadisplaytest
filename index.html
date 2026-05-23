@@ -199,6 +199,7 @@ let mode = 'menu';
 
 let rawGamma = 0;
 let centerGamma = 0;
+let smoothGamma = 0; // ✅ NEW (gyro smoothing)
 
 let keyLeft = false;
 let keyRight = false;
@@ -327,9 +328,27 @@ function calibrate(){
 let playerX = 300;
 
 function updateMovement(){
-  const tilt = (rawGamma - centerGamma) * 0.05;
+
+  const raw = (rawGamma - centerGamma);
+
+  // ✅ DEADZONE
+  let input = raw;
+
+  const deadzone = 2.5; // ✅ tune this (try 2–5)
+
+  if (Math.abs(input) < deadzone) {
+    input = 0;
+  } else {
+    // shrink input just outside deadzone
+    input = input - Math.sign(input) * deadzone;
+  }
+
+  input *= 0.05; // sensitivity scale
+
   const keyMove = (keyRight ? 1 : 0) - (keyLeft ? 1 : 0);
-  const vx = tilt * 8 + keyMove * 6;
+
+  const vx = input * 8 + keyMove * 6;
+
   playerX = Math.max(20, Math.min(580, playerX + vx));
 }
 
