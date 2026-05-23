@@ -334,7 +334,7 @@ function updateMovement(){
   // ✅ DEADZONE
   let input = raw;
 
-  const deadzone = 2.5; // ✅ tune this (try 2–5)
+  const deadzone = 5; // ✅ tune this (try 2–5)
 
   if (Math.abs(input) < deadzone) {
     input = 0;
