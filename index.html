@@ -573,6 +573,9 @@ function startReload(){
 function finishReload(){
   isReloading = false;
   ammoInMag = getMagSize();
+
+  // ✅ FIX: fire immediately after reload
+  fireTimer = 0;
 }
 
 function initWeaponState(){
@@ -605,10 +608,10 @@ function updateWeapons(dt){
 
   const spd = getBulletSpeed();
 
-  bullets.forEach(b => {
-    b.y -= spd;
-    b.x += b.vx;
-  });
+bullets.forEach(b => {
+  b.y -= spd * dt * 60;
+  b.x += b.vx * dt * 60;
+});
 
   bullets = bullets.filter(
     b => b.y > -20 && b.x > -40 && b.x < 640
@@ -629,11 +632,12 @@ function updateWeapons(dt){
     return;
   }
 
-  fireTimer--;
+  fireTimer -= dt;
+
 
   if (fireTimer <= 0) {
     fire();
-    fireTimer = getFireDelay();
+    fireTimer = getFireDelay() / 60;
   }
 }
 
@@ -792,24 +796,14 @@ function createReloadPower(){
 // ✅ SPAWN
 function spawnStatPowerUp(){
 
-  if (mode === 'debug_power') {
-    powerUps.push(createFireRatePower());
-    return;
-  }
-
-  if (mode === 'debug_vel') {
-    powerUps.push(createBulletVelPower());
-    return;
-  }
-
-  if (mode === 'debug_cap') {
-    powerUps.push(createCapacityPower());
-    return;
-  }
-
-  if (mode === 'debug_reload') {
-    powerUps.push(createReloadPower());
-    return;
+  // ✅ DEBUG CAP (max 4 on screen)
+  if (
+    mode === 'debug_power' ||
+    mode === 'debug_vel' ||
+    mode === 'debug_cap' ||
+    mode === 'debug_reload'
+  ) {
+    if (powerUps.length >= 4) return;
   }
 
   // game random
