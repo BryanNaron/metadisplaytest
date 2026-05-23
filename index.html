@@ -326,30 +326,42 @@ function calibrate(){
    ✅ MOVEMENT SYSTEM
 ========================================================= */
 let playerX = 300;
+let playerVX = 0; // ✅ NEW (velocity for easing)
 
 function updateMovement(){
 
-  const raw = (rawGamma - centerGamma);
+  // ✅ smoothing
+  smoothGamma += (rawGamma - smoothGamma) * 0.15;
 
-  // ✅ DEADZONE
-  let input = raw;
+  let input = smoothGamma - centerGamma;
 
-  const deadzone = 5; // ✅ tune this (try 2–5)
+  // ✅ deadzone
+  const deadzone = 5;
 
   if (Math.abs(input) < deadzone) {
     input = 0;
   } else {
-    // shrink input just outside deadzone
-    input = input - Math.sign(input) * deadzone;
+    input -= Math.sign(input) * deadzone;
   }
 
-  input *= 0.05; // sensitivity scale
+  // ✅ curve
+  let normalized = input * 0.03;
+  normalized = Math.sign(normalized) * Math.pow(Math.abs(normalized), 1.5);
 
+  // ✅ target velocity
+  let targetVX = normalized * 10;
+
+  // ✅ keyboard
   const keyMove = (keyRight ? 1 : 0) - (keyLeft ? 1 : 0);
+  targetVX += keyMove * 6;
 
-  const vx = input * 8 + keyMove * 6;
+  // ✅ EASE-IN (THIS IS THE MAGIC)
+  const accel = 0.15;   // how fast it speeds up
+  playerVX += (targetVX - playerVX) * accel;
 
-  playerX = Math.max(20, Math.min(580, playerX + vx));
+  playerX += playerVX;
+
+  playerX = Math.max(20, Math.min(580, playerX));
 }
 
 /* =========================================================
