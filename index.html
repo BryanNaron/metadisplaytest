@@ -227,8 +227,19 @@ function moveFocus(step){
 }
 
 document.addEventListener('keydown', (e) => {
+
   if (e.key === DPAD.LEFT || e.key === 'a' || e.key === 'A') keyLeft = true;
   if (e.key === DPAD.RIGHT || e.key === 'd' || e.key === 'D') keyRight = true;
+
+  // ✅ ONLY allow dash when game is running
+  if (running) {
+    if (e.key === DPAD.LEFT) {
+      dashLeft();
+    }
+    if (e.key === DPAD.RIGHT) {
+      dashRight();
+    }
+  }
 
   if (running) {
     if (e.key === DPAD.BACK) {
@@ -239,6 +250,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
+  // ✅ MENU NAVIGATION (ONLY when not running)
   ensureFocus();
 
   if (e.key === DPAD.UP || e.key === DPAD.LEFT) {
@@ -267,9 +279,39 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+
 document.addEventListener('keyup', (e) => {
   if (e.key === DPAD.LEFT || e.key === 'a' || e.key === 'A') keyLeft = false;
   if (e.key === DPAD.RIGHT || e.key === 'd' || e.key === 'D') keyRight = false;
+});
+
+
+// -------- SWIPE INPUT --------
+let touchStartX = 0;
+let touchStartTime = 0;
+
+document.addEventListener('touchstart', (e) => {
+  if (!running) return;
+
+  const t = e.touches[0];
+  touchStartX = t.clientX;
+  touchStartTime = performance.now();
+});
+
+document.addEventListener('touchend', (e) => {
+  if (!running) return;
+
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touchStartX;
+  const dt = (performance.now() - touchStartTime) / 1000;
+
+  const minSwipeDist = 30;
+  const maxSwipeTime = 0.25;
+
+  if (Math.abs(dx) > minSwipeDist && dt < maxSwipeTime) {
+    if (dx > 0) dashRight();
+    else dashLeft();
+  }
 });
 
 document.addEventListener('visibilitychange', () => {
@@ -323,10 +365,35 @@ function calibrate(){
 }
 
 /* =========================================================
-   ✅ MOVEMENT SYSTEM
+   ✅ MOVEMENT SYSTEM (GYRO + EASE + DASH + SOFT LOCK)
 ========================================================= */
 let playerX = 300;
-let playerVX = 0; // ✅ NEW (velocity for easing)
+let playerY = 540;
+
+let playerVX = 0;
+
+// -------- DASH SYSTEM --------
+let dashVX = 0;
+let dashTimer = 0;
+let dashCooldown = 0;
+
+// NOTE: DASH_DISTANCE is in PIXELS. 0.5 is basically invisible.
+// A good starting value is 80–140.
+let dashStartX = 0;
+let dashTargetX = 0;
+
+
+const DASH_DISTANCE = 80;   // ✅ actual distance
+const DASH_TIME = 0.08;
+const DASH_COOLDOWN = 0.0;
+
+// -------- SOFT LOCK TUNING --------
+// How close (in pixels) you must be horizontally before assist kicks in
+const LOCK_RANGE_X = 60;
+// How far up the screen (in pixels) we consider targets for assist
+const LOCK_RANGE_Y = 260;
+// Strength of the pull (higher = stronger). Try 0.02–0.05.
+const LOCK_STRENGTH = 0.03;
 
 function updateMovement(){
 
@@ -348,22 +415,106 @@ function updateMovement(){
   let normalized = input * 0.03;
   normalized = Math.sign(normalized) * Math.pow(Math.abs(normalized), 1.5);
 
-  // ✅ target velocity
+  // base target velocity from gyro
   let targetVX = normalized * 10;
 
-  // ✅ keyboard
+  // keyboard movement (debug / fallback)
   const keyMove = (keyRight ? 1 : 0) - (keyLeft ? 1 : 0);
   targetVX += keyMove * 6;
 
-  // ✅ EASE-IN (THIS IS THE MAGIC)
-  const accel = 0.15;   // how fast it speeds up
+  // -------- SOFT LOCK (AIM ASSIST) --------
+  // Gently pulls playerX toward the closest powerup above the player
+  // ONLY when you're already near alignment (within LOCK_RANGE_X).
+  if (running && powerUps && powerUps.length) {
+
+    let best = null;
+    let bestDx = Infinity;
+
+    for (let i = 0; i < powerUps.length; i++) {
+      const p = powerUps[i];
+
+      // only consider targets above player and within vertical range
+      const dy = playerY - p.y;
+      if (dy <= 0 || dy > LOCK_RANGE_Y) continue;
+
+      const dx = p.x - playerX;
+      const adx = Math.abs(dx);
+
+      if (adx < bestDx) {
+        bestDx = adx;
+        best = p;
+      }
+    }
+
+    if (best && bestDx < LOCK_RANGE_X) {
+      // closer = stronger
+      const strength = 1 - (bestDx / LOCK_RANGE_X);
+
+      // pull toward target (adds to the existing targetVX)
+      targetVX += (best.x - playerX) * LOCK_STRENGTH * strength;
+    }
+  }
+
+
+
+// ✅ easing (ONLY when not dashing)
+const accel = 0.15;
+
+if (dashTimer <= 0) {
   playerVX += (targetVX - playerVX) * accel;
-
-  playerX += playerVX;
-
-  playerX = Math.max(20, Math.min(580, playerX));
 }
 
+// -------- DASH UPDATE --------
+if (dashTimer > 0) {
+
+  dashTimer -= (1/60);
+
+  const t = 1 - (dashTimer / DASH_TIME);
+
+  // ✅ snap to dash path
+  playerX = dashStartX + (dashTargetX - dashStartX) * t;
+
+  // ✅ STOP normal movement during dash
+  playerVX = 0;
+
+} else {
+  playerX += playerVX;
+}
+
+// ✅ cooldown
+if (dashCooldown > 0) {
+  dashCooldown -= (1/60);
+}
+
+// ✅ clamp
+playerX = Math.max(20, Math.min(580, playerX));
+}
+// -------- DASH TRIGGERS (ADD BACK) --------
+function dashLeft(){
+  if (dashCooldown > 0) return;
+
+  // optional: debug confirmation
+  // console.log("dashLeft");
+
+  dashStartX = playerX;
+  dashTargetX = playerX - DASH_DISTANCE;
+
+  dashTimer = DASH_TIME;
+  dashCooldown = DASH_COOLDOWN;
+}
+
+function dashRight(){
+  if (dashCooldown > 0) return;
+
+  // optional: debug confirmation
+  // console.log("dashRight");
+
+  dashStartX = playerX;
+  dashTargetX = playerX + DASH_DISTANCE;
+
+  dashTimer = DASH_TIME;
+  dashCooldown = DASH_COOLDOWN;
+}
 /* =========================================================
    ✅ WEAPON SYSTEM (REAL TIME RELOAD)
 ========================================================= */
@@ -722,18 +873,30 @@ function grantPowerUp(p){
 }
 
 /* =========================================================
-   ✅ RENDER SYSTEM
+   ✅ RENDER SYSTEM (WITH ONSCREEN ERROR DISPLAY)
 ========================================================= */
 function draw(){
   ctx.clearRect(0, 0, 600, 600);
 
+  // border
   ctx.strokeStyle = 'rgba(0,212,255,0.10)';
   ctx.lineWidth = 1;
   ctx.strokeRect(10, 10, 580, 580);
 
-  const playerY = 540;
+  // ✅ show runtime errors at top-left so "freeze" becomes obvious
+  if (typeof lastRuntimeError === "string" && lastRuntimeError.length) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,51,85,0.95)';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText("ERROR: " + lastRuntimeError, 14, 14);
+    ctx.restore();
+  }
 
   // PLAYER
+  ctx.fillStyle = '#00d4ff';
+  ctx.fillRect(playerX - 10, playerY, 20, 10);
 
 // -------- AIM LINE GUIDE --------
 if (running) {
@@ -743,12 +906,11 @@ if (running) {
   const aimStartY = playerY - 5;
   const aimEndY = 40;
 
-  // ✅ line direction (centered for now)
   const aimX = playerX;
 
-  // ✅ gradient fade (strong near player → fades upward)
+  // ✅ fade line (strong near player → fades upward)
   const grad = ctx.createLinearGradient(aimX, aimStartY, aimX, aimEndY);
-  grad.addColorStop(0, "rgba(255,255,255,0.35)");
+  grad.addColorStop(0, "rgba(255,255,255,0.45)");
   grad.addColorStop(1, "rgba(255,255,255,0)");
 
   ctx.strokeStyle = grad;
@@ -762,9 +924,6 @@ if (running) {
   ctx.restore();
 }
 
-  ctx.fillStyle = '#00d4ff';
-  ctx.fillRect(playerX - 10, playerY, 20, 10);
-
   // -------- AMMO UI --------
   const ammoW = 3;
   const ammoH = 5;
@@ -773,7 +932,6 @@ if (running) {
 
   const currentAmmo = ammoInMag;
   const maxAmmo = getMagSize();
-
   const ammoTopY = 560;
 
   for (let i = 0; i < maxAmmo; i++) {
@@ -785,7 +943,6 @@ if (running) {
     const startX = playerX - totalW / 2;
 
     ctx.fillStyle = (i < currentAmmo) ? '#ffffff' : 'rgba(255,255,255,0.25)';
-
     ctx.fillRect(
       startX + col * (ammoW + ammoGap),
       ammoTopY + row * (ammoH + ammoGap),
@@ -794,7 +951,7 @@ if (running) {
     );
   }
 
-  // -------- RELOAD BAR (MATCH AMMO WIDTH, ALWAYS VISIBLE) --------
+  // -------- RELOAD BAR (seconds-accurate) --------
   const firstRowCount = Math.min(maxAmmo, ammoMaxPerRow);
   const ammoRowWidth = firstRowCount * (ammoW + ammoGap) - ammoGap;
   const ammoStartX = playerX - ammoRowWidth / 2;
@@ -804,15 +961,11 @@ if (running) {
   const barY = ammoTopY - 6;
   const barWidth = ammoRowWidth;
 
-// -------- RELOAD BAR --------
-let reloadProgress = 1;
-
-if (isReloading) {
-  // convert current reload duration to seconds
-  const totalReload = getReloadTime() / 60;
-
-  reloadProgress = 1 - (reloadTimer / totalReload);
-}
+  let reloadProgress = 1;
+  if (isReloading) {
+    const totalReload = getReloadTime() / 60; // frames → seconds for display
+    reloadProgress = 1 - (reloadTimer / totalReload);
+  }
 
   ctx.fillStyle = 'rgba(255,255,255,0.15)';
   ctx.fillRect(barX, barY, barWidth, barHeight);
@@ -830,7 +983,7 @@ if (isReloading) {
     ctx.fillRect(e.x - e.w/2, e.y - e.h/2, e.w, e.h);
   });
 
-  // -------- AIM DETECTION (OUTLINE ONLY) --------
+  // -------- AIM DETECTION --------
   const aimWindowPx = 14;
   let aimedIndex = -1;
   let bestDx = Infinity;
@@ -852,82 +1005,37 @@ if (isReloading) {
 
     ctx.save();
 
-    // body
     ctx.fillStyle = '#ffd400';
     ctx.fillRect(p.x - p.w/2, p.y - p.h/2, p.w, p.h);
 
-// -------- STRONG AIM OUTLINE --------
-if (isAimed) {
+    if (isAimed) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3;
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 10;
+      ctx.strokeRect(p.x - p.w/2 - 2, p.y - p.h/2 - 2, p.w + 4, p.h + 4);
+    }
 
-  ctx.save();
-
-  // ✅ brighter color
-  ctx.strokeStyle = '#ffffff';
-
-  // ✅ thicker outline (much easier to see)
-  ctx.lineWidth = 3;
-
-  // ✅ glow effect
-  ctx.shadowColor = '#ffffff';
-  ctx.shadowBlur = 10;
-
-  ctx.strokeRect(
-    p.x - p.w/2 - 2,
-    p.y - p.h/2 - 2,
-    p.w + 4,
-    p.h + 4
-  );
-
-  ctx.restore();
-}
-
-    // LABEL (two-line, flat values)
+    // labels
     let labelTop = "";
     let labelBottom = "";
 
-    if (p.type === 'stat_fireRate') {
-  labelTop = "FR";
-  labelBottom = "+" + Math.round(p.power);
+    if (p.type === 'stat_fireRate') { labelTop = "FR"; labelBottom = "+" + Math.round(p.power); }
+    else if (p.type === 'stat_bulletVel') { labelTop = "BV"; labelBottom = "+" + Number(p.power).toFixed(1); }
+    else if (p.type === 'stat_capacity') { labelTop = "CP"; labelBottom = "+" + Math.round(p.power); }
+    else if (p.type === 'stat_reload') { labelTop = "RL"; labelBottom = "-" + Math.round(p.power); }
 
-} else if (p.type === 'stat_bulletVel') {
-  labelTop = "BV";
-  labelBottom = "+" + Number(p.power).toFixed(1);
-
-} else if (p.type === 'stat_capacity') {
-  labelTop = "CP";
-  labelBottom = "+" + Math.round(p.power);
-
-} else if (p.type === 'stat_reload') {
-  labelTop = "RL";
-  labelBottom = "-" + Math.round(p.power); // ✅ NEW
-}
-
+    ctx.shadowBlur = 0;
     ctx.fillStyle = '#000';
+    ctx.font = '10px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-
-    let fontSize = 10;
-    const maxWidth = p.w - 6;
-    ctx.font = fontSize + 'px monospace';
-
-    // shrink if needed
-    while (
-      (ctx.measureText(labelTop).width > maxWidth ||
-       ctx.measureText(labelBottom).width > maxWidth) &&
-      fontSize > 7
-    ){
-      fontSize--;
-      ctx.font = fontSize + 'px monospace';
-    }
-
     ctx.fillText(labelTop, p.x, p.y - 6);
     ctx.fillText(labelBottom, p.x, p.y + 6);
 
-    // HEALTH GRID (centered per row)
+    // hp pips centered
     ctx.fillStyle = '#fff';
-    const pip = 3;
-    const gap = 2;
-    const maxPerRow = 7;
+    const pip = 3, gap = 2, maxPerRow = 7;
 
     for (let i = 0; i < p.hp; i++) {
       const row = Math.floor(i / maxPerRow);
@@ -940,28 +1048,19 @@ if (isAimed) {
       ctx.fillRect(
         startX + col * (pip + gap),
         p.y + p.h/2 + 4 + row * (pip + gap + 1),
-        pip,
-        pip
+        pip, pip
       );
     }
 
     ctx.restore();
   });
 
-  // -------- PLAYER STATS UI --------
-
-  // Fire Rate: scaled integer, no decimals
+  // -------- HUD STATS --------
   const delay = getFireDelay();
   const rps = 60 / delay;
   ui.fd.textContent = Math.round(rps * 100);
-
-  // Bullet Velocity
   ui.bs.textContent = getBulletSpeed().toFixed(1);
-
-  // Capacity
   ui.bc.textContent = getMagSize();
-
-  // Reload Time (seconds)
   ui.rt.textContent = (getReloadTime() / 60).toFixed(1);
 }
 /* =========================================================
@@ -1042,27 +1141,34 @@ function startRun(runMode){
 }
 
 /* =========================================================
-   ✅ CORE GAME LOOP (REAL TIME / DELTA TIME)
+   ✅ CORE GAME LOOP (REAL TIME / DELTA TIME + ONSCREEN ERRORS)
 ========================================================= */
 let lastTime = performance.now();
+let lastRuntimeError = "";
 
 function update(now){
   try {
+    // ✅ REAL dt in seconds
     const dt = (now - lastTime) / 1000;
     lastTime = now;
 
-    // movement always updates
+    // clear any previous error once we successfully tick
+    lastRuntimeError = "";
+
+    // movement always ticks
     updateMovement();
 
     if (running) {
-      // weapons always update in any run mode
+      // weapons (dt-based reload)
       updateWeapons(dt);
 
+      // enemies only in these modes
       if (mode === 'game' || mode === 'debug_enemy') {
         updateEnemies();
         handleBulletsVsEnemies();
       }
 
+      // powerups in these modes
       if (
         mode === 'game' ||
         mode === 'debug_power' ||
@@ -1077,12 +1183,18 @@ function update(now){
     draw();
 
   } catch (err) {
+    // ✅ capture error so you SEE it on-screen
+    lastRuntimeError = (err && err.message) ? err.message : String(err);
     console.error("Game error:", err);
+
+    // still draw so the HUD/menu can show
+    try { draw(); } catch(e) {}
   }
 
   requestAnimationFrame(update);
 }
 
+// ✅ start loop ONCE (delete any other requestAnimationFrame(update) lines elsewhere)
 requestAnimationFrame(update);
 
 /* =========================================================
@@ -1095,7 +1207,7 @@ ui.btnEnable.addEventListener('click', async () => {
 ui.btnCal.addEventListener('click', () => calibrate());
 ui.btnStart.addEventListener('click', () => startRun('game'));
 
-// ✅ THIS IS WHAT OPENS THE DEBUG MENU
+// ✅ Debug menu open
 ui.btnDebug.addEventListener('click', () => setMode('debugMenu'));
 
 ui.btnDbgMove.addEventListener('click', () => startRun('debug_move'));
@@ -1109,10 +1221,8 @@ ui.btnDbgReload.addEventListener('click', () => startRun('debug_reload'));
 
 ui.btnDbgBack.addEventListener('click', () => setMode('menu'));
 
-// initial focus
 ui.btnEnable.focus();
 
-requestAnimationFrame(update);
 </script>
 </body>
 </html>
