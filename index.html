@@ -122,14 +122,12 @@
 
   <div id="panel">
     <p id="title">TiltGala</p>
-    <p id="subtitle">Enable motion. Tilt to move. Auto-fire. Shoot yellow +FR powerups (5 hits). ESC backs out.</p>
+    <p id="subtitle">Swipe to move lanes.</p>
 
-    <div class="row" id="menuRow">
-      <button id="btnEnable" class="focusable">Enable Motion</button>
-      <button id="btnCal" class="focusable" disabled>Calibrate</button>
-      <button id="btnStart" class="focusable" disabled>Start Game</button>
-      <button id="btnDebug" class="focusable">Debug Mode</button>
-    </div>
+<div class="row" id="menuRow">
+  <button id="btnStart" class="focusable">Start Game</button>
+  <button id="btnDebug" class="focusable">Debug Mode</button>
+</div>
 
 <div class="row hidden" id="debugRow">
   <button id="btnDbgMove" class="focusable">Test Movement</button>
@@ -171,8 +169,6 @@ const ui = {
   menuRow: document.getElementById('menuRow'),
   debugRow: document.getElementById('debugRow'),
 
-  btnEnable: document.getElementById('btnEnable'),
-  btnCal: document.getElementById('btnCal'),
   btnStart: document.getElementById('btnStart'),
   btnDebug: document.getElementById('btnDebug'),
 
@@ -226,31 +222,59 @@ function moveFocus(step){
   list[next].focus();
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+// =========================================================
+// ✅ INPUT (GRID LANES ONLY — NO DASH)
+// Replace: keydown + keyup + touchstart + touchend
+// =========================================================
 document.addEventListener('keydown', (e) => {
 
+  // track held (optional)
   if (e.key === DPAD.LEFT || e.key === 'a' || e.key === 'A') keyLeft = true;
   if (e.key === DPAD.RIGHT || e.key === 'd' || e.key === 'D') keyRight = true;
 
-  // ✅ ONLY allow dash when game is running
+  // =========================
+  // ✅ GAME INPUT
+  // =========================
   if (running) {
-    if (e.key === DPAD.LEFT) {
-      dashLeft();
-    }
-    if (e.key === DPAD.RIGHT) {
-      dashRight();
-    }
-  }
 
-  if (running) {
+    // ✅ Lane step in BOTH game + debug_move
+    if (e.key === DPAD.LEFT || e.key === 'a' || e.key === 'A') {
+      stepLane(-1);
+      e.preventDefault();
+      return;
+    }
+
+    if (e.key === DPAD.RIGHT || e.key === 'd' || e.key === 'D') {
+      stepLane(+1);
+      e.preventDefault();
+      return;
+    }
+
+    // ✅ exit to menu
     if (e.key === DPAD.BACK) {
       exitToMenu();
       e.preventDefault();
       return;
     }
+
     return;
   }
 
-  // ✅ MENU NAVIGATION (ONLY when not running)
+  // =========================
+  // ✅ MENU NAVIGATION
+  // =========================
   ensureFocus();
 
   if (e.key === DPAD.UP || e.key === DPAD.LEFT) {
@@ -279,20 +303,17 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-
 document.addEventListener('keyup', (e) => {
   if (e.key === DPAD.LEFT || e.key === 'a' || e.key === 'A') keyLeft = false;
   if (e.key === DPAD.RIGHT || e.key === 'd' || e.key === 'D') keyRight = false;
 });
 
-
-// -------- SWIPE INPUT --------
+// -------- SWIPE INPUT (LANE STEP) --------
 let touchStartX = 0;
 let touchStartTime = 0;
 
 document.addEventListener('touchstart', (e) => {
   if (!running) return;
-
   const t = e.touches[0];
   touchStartX = t.clientX;
   touchStartTime = performance.now();
@@ -305,12 +326,12 @@ document.addEventListener('touchend', (e) => {
   const dx = t.clientX - touchStartX;
   const dt = (performance.now() - touchStartTime) / 1000;
 
-  const minSwipeDist = 30;
-  const maxSwipeTime = 0.25;
+  const minSwipeDist = 25;
+  const maxSwipeTime = 0.30;
 
   if (Math.abs(dx) > minSwipeDist && dt < maxSwipeTime) {
-    if (dx > 0) dashRight();
-    else dashLeft();
+    if (dx > 0) stepLane(+1);
+    else stepLane(-1);
   }
 });
 
@@ -365,139 +386,106 @@ function calibrate(){
 }
 
 /* =========================================================
-   ✅ MOVEMENT SYSTEM (GYRO + EASE + DASH + SOFT LOCK)
+   ✅ GRID / LANE SYSTEM (ADJUSTABLE)
 ========================================================= */
-let playerX = 300;
+
+// ✅ change this ONE number later if you want more/less columns
+let GRID_COLS = 8;
+
+// ✅ usable horizontal space for lanes (tune these if you want wider margins)
+let GRID_LEFT_X  = 60;
+let GRID_RIGHT_X = 540;
+
+// derived lane centers
+let GRID_LANES = [];
+
+function rebuildGridLanes(){
+  GRID_LANES = [];
+  if (GRID_COLS < 2) GRID_COLS = 2;
+
+  const span = (GRID_RIGHT_X - GRID_LEFT_X);
+  const step = span / (GRID_COLS - 1);
+
+  for (let i = 0; i < GRID_COLS; i++) {
+    GRID_LANES.push(GRID_LEFT_X + step * i);
+  }
+}
+
+// call once on load
+rebuildGridLanes();
+
+// random lane center (for enemies/powerups)
+function getRandomLaneX(){
+  return GRID_LANES[Math.floor(Math.random() * GRID_LANES.length)];
+}
+
+// nearest lane index for an x position
+function nearestLaneIndex(x){
+  let best = 0;
+  let bestDist = Math.abs(x - GRID_LANES[0]);
+
+  for (let i = 1; i < GRID_LANES.length; i++) {
+    const d = Math.abs(x - GRID_LANES[i]);
+    if (d < bestDist) {
+      bestDist = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
+// clamp lane index
+function clampLane(i){
+  return Math.max(0, Math.min(GRID_COLS - 1, i));
+}
+/* =========================================================
+   ✅ MOVEMENT SYSTEM (GRID STYLE ONLY)
+========================================================= */
 let playerY = 540;
 
-let playerVX = 0;
+// ✅ lane-based player state
+let playerLane = Math.floor(GRID_COLS / 2);
+let playerX = GRID_LANES[playerLane];
 
-// -------- DASH SYSTEM --------
-let dashVX = 0;
+// ✅ smooth visual glide between lanes (not analog movement)
+let laneLerpSpeed = 18; // higher = snappier (try 14–24)
+
+// ✅ dash (lane jump animation)
 let dashTimer = 0;
 let dashCooldown = 0;
 
-// NOTE: DASH_DISTANCE is in PIXELS. 0.5 is basically invisible.
-// A good starting value is 80–140.
+const DASH_LANES = 1;        // ✅ dash moves this many lanes (1 = one column)
+const DASH_TIME = 0.08;      // dash animation duration in seconds
+const DASH_COOLDOWN = 0.35;  // seconds
+
 let dashStartX = 0;
 let dashTargetX = 0;
 
+// ✅ gyro-to-lane tuning
+const GYRO_DEADZONE = 5;     // degrees-ish feel (you already like 5)
+const GYRO_MAX = 20;         // tilt that maps to edge lanes (try 18–28)
+const GYRO_HYSTERESIS = 0.12; // prevents jitter lane flipping (0.08–0.18)
 
-const DASH_DISTANCE = 80;   // ✅ actual distance
-const DASH_TIME = 0.08;
-const DASH_COOLDOWN = 0.0;
+// gyro lane smoothing
+let desiredLane = playerLane;
 
-// -------- SOFT LOCK TUNING --------
-// How close (in pixels) you must be horizontally before assist kicks in
-const LOCK_RANGE_X = 50;
-// How far up the screen (in pixels) we consider targets for assist
-const LOCK_RANGE_Y = 700;
-// Strength of the pull (higher = stronger). Try 0.02–0.05.
-const LOCK_STRENGTH = 0.06;
-
-function updateMovement(){
-
-  // ✅ smoothing
-  smoothGamma += (rawGamma - smoothGamma) * 0.15;
-
-  let input = smoothGamma - centerGamma;
-
-  // ✅ deadzone
-  const deadzone = 5;
-
-  if (Math.abs(input) < deadzone) {
-    input = 0;
-  } else {
-    input -= Math.sign(input) * deadzone;
-  }
-
-  // ✅ curve
-  let normalized = input * 0.03;
-  normalized = Math.sign(normalized) * Math.pow(Math.abs(normalized), 1.5);
-
-  // base target velocity from gyro
-  let targetVX = normalized * 10;
-
-  // keyboard movement (debug / fallback)
-  const keyMove = (keyRight ? 1 : 0) - (keyLeft ? 1 : 0);
-  targetVX += keyMove * 6;
-
-  // -------- SOFT LOCK (AIM ASSIST) --------
-  // Gently pulls playerX toward the closest powerup above the player
-  // ONLY when you're already near alignment (within LOCK_RANGE_X).
-  if (running && powerUps && powerUps.length) {
-
-    let best = null;
-    let bestDx = Infinity;
-
-    for (let i = 0; i < powerUps.length; i++) {
-      const p = powerUps[i];
-
-      // only consider targets above player and within vertical range
-      const dy = playerY - p.y;
-      if (dy <= 0 || dy > LOCK_RANGE_Y) continue;
-
-      const dx = p.x - playerX;
-      const adx = Math.abs(dx);
-
-      if (adx < bestDx) {
-        bestDx = adx;
-        best = p;
-      }
-    }
-
-    if (best && bestDx < LOCK_RANGE_X) {
-      // closer = stronger
-      const strength = 1 - (bestDx / LOCK_RANGE_X);
-
-      // pull toward target (adds to the existing targetVX)
-      targetVX += (best.x - playerX) * LOCK_STRENGTH * strength;
-    }
-  }
-
-
-
-// ✅ easing (ONLY when not dashing)
-const accel = 0.15;
-
-if (dashTimer <= 0) {
-  playerVX += (targetVX - playerVX) * accel;
+// ✅ Helper: step lanes
+function stepLane(dir){
+  playerLane = clampLane(playerLane + dir);
+  desiredLane = playerLane;
 }
 
-// -------- DASH UPDATE --------
-if (dashTimer > 0) {
-
-  dashTimer -= (1/60);
-
-  const t = 1 - (dashTimer / DASH_TIME);
-
-  // ✅ snap to dash path
-  playerX = dashStartX + (dashTargetX - dashStartX) * t;
-
-  // ✅ STOP normal movement during dash
-  playerVX = 0;
-
-} else {
-  playerX += playerVX;
-}
-
-// ✅ cooldown
-if (dashCooldown > 0) {
-  dashCooldown -= (1/60);
-}
-
-// ✅ clamp
-playerX = Math.max(20, Math.min(580, playerX));
-}
-// -------- DASH TRIGGERS (ADD BACK) --------
+// ✅ Dash now means "jump lanes"
 function dashLeft(){
   if (dashCooldown > 0) return;
 
-  // optional: debug confirmation
-  // console.log("dashLeft");
+  const targetLane = clampLane(playerLane - DASH_LANES);
 
   dashStartX = playerX;
-  dashTargetX = playerX - DASH_DISTANCE;
+  dashTargetX = GRID_LANES[targetLane];
+
+  playerLane = targetLane; // commit lane
+  desiredLane = playerLane;
 
   dashTimer = DASH_TIME;
   dashCooldown = DASH_COOLDOWN;
@@ -506,14 +494,48 @@ function dashLeft(){
 function dashRight(){
   if (dashCooldown > 0) return;
 
-  // optional: debug confirmation
-  // console.log("dashRight");
+  const targetLane = clampLane(playerLane + DASH_LANES);
 
   dashStartX = playerX;
-  dashTargetX = playerX + DASH_DISTANCE;
+  dashTargetX = GRID_LANES[targetLane];
+
+  playerLane = targetLane;
+  desiredLane = playerLane;
 
   dashTimer = DASH_TIME;
   dashCooldown = DASH_COOLDOWN;
+}
+
+function updateMovement(dt){
+
+  // ✅ debug_move: ONLY keyboard lane stepping, no gyro influence
+  if (mode === 'debug_move' || mode === 'game') {
+    // playerX just eases to current lane (visual polish)
+    const targetX = GRID_LANES[playerLane];
+    playerX += (targetX - playerX) * Math.min(1, laneLerpSpeed * dt);
+
+    // cooldown timers still tick
+    if (dashCooldown > 0) dashCooldown -= dt;
+    if (dashTimer > 0) dashTimer -= dt;
+
+    return;
+  }
+
+  // commit desired lane
+// ✅ keep playerLane only controlled by inputs
+// no automatic overwrite
+
+  // dash animation overrides normal lane easing
+  if (dashTimer > 0) {
+    dashTimer -= dt;
+    const t = 1 - (dashTimer / DASH_TIME);
+    playerX = dashStartX + (dashTargetX - dashStartX) * t;
+  } else {
+    const targetX = GRID_LANES[playerLane];
+    playerX += (targetX - playerX) * Math.min(1, laneLerpSpeed * dt);
+  }
+
+  if (dashCooldown > 0) dashCooldown -= dt;
 }
 /* =========================================================
    ✅ WEAPON SYSTEM (REAL TIME RELOAD)
@@ -741,7 +763,8 @@ function createFireRatePower(){
   const v = randRange(fireRatePowerRange.min, fireRatePowerRange.max);
   return {
     type: 'stat_fireRate',
-    x: 40 + Math.random() * 520,
+    x: getRandomLaneX(),
+
     y: -20,
     w: 34,
     h: 24,
@@ -755,7 +778,8 @@ function createBulletVelPower(){
   const v = randRange(bulletVelPowerRange.min, bulletVelPowerRange.max);
   return {
     type: 'stat_bulletVel',
-    x: 40 + Math.random() * 520,
+    x: getRandomLaneX(),
+
     y: -20,
     w: 34,
     h: 24,
@@ -769,7 +793,8 @@ function createCapacityPower(){
   const v = randInt(capacityPowerRange.min, capacityPowerRange.max);
   return {
     type: 'stat_capacity',
-    x: 40 + Math.random() * 520,
+    x: getRandomLaneX(),
+
     y: -20,
     w: 34,
     h: 24,
@@ -783,7 +808,8 @@ function createReloadPower(){
   const v = randRange(reloadPowerRange.min, reloadPowerRange.max);
   return {
     type: 'stat_reload',
-    x: 40 + Math.random() * 520,
+    x: getRandomLaneX(),
+
     y: -20,
     w: 34,
     h: 24,
@@ -793,7 +819,6 @@ function createReloadPower(){
   };
 }
 
-// ✅ SPAWN
 function spawnStatPowerUp(){
 
   // ✅ DEBUG CAP (max 4 on screen)
@@ -806,13 +831,45 @@ function spawnStatPowerUp(){
     if (powerUps.length >= 4) return;
   }
 
-  // game random
+  // =========================
+  // ✅ DEBUG MODE: FORCE SPAWN TYPE
+  // =========================
+
+  if (mode === 'debug_power') {
+    powerUps.push(createFireRatePower());
+    return;
+  }
+
+  if (mode === 'debug_vel') {
+    powerUps.push(createBulletVelPower());
+    return;
+  }
+
+  if (mode === 'debug_cap') {
+    powerUps.push(createCapacityPower());
+    return;
+  }
+
+  if (mode === 'debug_reload') {
+    powerUps.push(createReloadPower());
+    return;
+  }
+
+  // =========================
+  // ✅ NORMAL GAME RANDOM
+  // =========================
+
   const r = Math.random();
 
-  if (r < 0.25) powerUps.push(createFireRatePower());
-  else if (r < 0.5) powerUps.push(createBulletVelPower());
-  else if (r < 0.75) powerUps.push(createCapacityPower());
-  else powerUps.push(createReloadPower());
+  if (r < 0.25) {
+    powerUps.push(createFireRatePower());
+  } else if (r < 0.5) {
+    powerUps.push(createBulletVelPower());
+  } else if (r < 0.75) {
+    powerUps.push(createCapacityPower());
+  } else {
+    powerUps.push(createReloadPower());
+  }
 }
 
 // ✅ UPDATE
@@ -1088,7 +1145,7 @@ function setMode(nextMode){
     ui.panel.classList.remove('hidden');
     ui.menuRow.classList.remove('hidden');
 
-    ui.btnEnable.focus();
+    ui.btnStart.focus();
     setTimeout(ensureFocus, 0);
     return;
   }
@@ -1152,7 +1209,7 @@ function update(now){
     lastRuntimeError = "";
 
     // movement always ticks
-    updateMovement();
+    updateMovement(dt);
 
     if (running) {
       // weapons (dt-based reload)
@@ -1196,11 +1253,7 @@ requestAnimationFrame(update);
 /* =========================================================
    ✅ UI WIRING
 ========================================================= */
-ui.btnEnable.addEventListener('click', async () => {
-  await requestMotionPermission();
-});
 
-ui.btnCal.addEventListener('click', () => calibrate());
 ui.btnStart.addEventListener('click', () => startRun('game'));
 
 // ✅ Debug menu open
@@ -1216,8 +1269,6 @@ ui.btnDbgCap.addEventListener('click', () => startRun('debug_cap'));
 ui.btnDbgReload.addEventListener('click', () => startRun('debug_reload'));
 
 ui.btnDbgBack.addEventListener('click', () => setMode('menu'));
-
-ui.btnEnable.focus();
 
 </script>
 </body>
