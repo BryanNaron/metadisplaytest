@@ -30,15 +30,13 @@
     #app { position: relative; width: 600px; height: 600px; }
     canvas { display:block; width:600px; height:600px; background:var(--bg); }
 
-    #hud {
-      position:absolute;
-      top:0; left:0; right:0;
-      padding: 10px 12px;
-      display:flex;
-      justify-content: space-between;
-      gap: 8px;
-      pointer-events:none;
-    }
+#hud {
+  position:absolute;
+  top:0;
+  left:0;
+  right:0;
+  transition: top 0.15s ease; /* ✅ smooth shift */
+}
 
     .pill {
       background: rgba(16,18,22,0.78);
@@ -81,7 +79,7 @@
       color: var(--text);
       font-size: 18px;
       font-weight: 800;
-      flex: 1 1 45%;
+      flex: 1 1 100%;
       display:flex;
       align-items:center;
       justify-content:center;
@@ -97,6 +95,9 @@
     .focusable[disabled]{ opacity:0.45; }
 
     .hidden { display:none !important; }
+.hideInPerk {
+  display: none;
+}
   </style>
 </head>
 
@@ -104,7 +105,7 @@
 <div id="app">
   <canvas id="c" width="600" height="600"></canvas>
 
-<div id="hud">
+<div id="hud" class="hidden">
   <!-- LEFT: Player Stats -->
   <div style="display:flex; flex-direction:column; gap:6px;">
     <div class="pill">Score <strong id="score">0</strong></div>
@@ -120,28 +121,40 @@
   </div>
 </div>
 
-  <div id="panel">
-    <p id="title">TiltGala</p>
-    <p id="subtitle">Swipe to move lanes.</p>
+<div id="panel">
+<p id="title" class="panelText">TiltGala</p>
+<p id="subtitle" class="panelText">Swipe to move lanes.</p>
 
-<div class="row" id="menuRow">
-  <button id="btnStart" class="focusable">Start Game</button>
-  <button id="btnDebug" class="focusable">Debug Mode</button>
-</div>
-
-<div class="row hidden" id="debugRow">
-  <button id="btnDbgMove" class="focusable">Test Movement</button>
-  <button id="btnDbgWeapon" class="focusable">Test Weapon</button>
-  <button id="btnDbgEnemy" class="focusable">Test Enemies</button>
-
-  <button id="btnDbgPower" class="focusable">Test Powerups (Fire Rate)</button>
-  <button id="btnDbgVel" class="focusable">Test Powerups (Bullet Velocity)</button>
-  <button id="btnDbgCap" class="focusable">Test Powerups (Capacity)</button>
-<button id="btnDbgReload" class="focusable">Test Powerups (Reload)</button>
-
-  <button id="btnDbgBack" class="focusable">Back</button>
-</div>
+  <div class="row" id="menuRow">
+    <button id="btnStart" class="focusable">Start Game</button>
+    <button id="btnDebug" class="focusable">Debug Mode</button>
   </div>
+
+  <div class="row hidden" id="debugRow">
+    <button id="btnDbgEnemy" class="focusable">Test Enemies</button>
+    <button id="btnDbgAsteroid" class="focusable">Test Enemy (Asteroid)</button>
+    <button id="btnDbgMove" class="focusable">Test Movement</button>
+    <button id="btnDbgWeapon" class="focusable">Test Weapon</button>
+
+    <button id="btnDbgPower" class="focusable">Test Powerups (Fire Rate)</button>
+    <button id="btnDbgVel" class="focusable">Test Powerups (Bullet Velocity)</button>
+    <button id="btnDbgCap" class="focusable">Test Powerups (Capacity)</button>
+    <button id="btnDbgReload" class="focusable">Test Powerups (Reload)</button>
+
+    <button id="btnDbgBack" class="focusable">Back</button>
+  </div>
+
+  <!-- ✅ MOVE THIS OUTSIDE debugRow -->
+  <div class="row hidden" id="pauseRow">
+    <button id="btnResume" class="focusable">Resume</button>
+    <button id="btnExit" class="focusable">Exit</button>
+  </div>
+
+<div class="row hidden" id="perkRow" style="flex-direction: column;">
+  <button id="perk1" class="focusable"></button>
+  <button id="perk2" class="focusable"></button>
+  <button id="perk3" class="focusable"></button>
+</div>
 </div>
 
 <script>
@@ -163,6 +176,12 @@ const ui = {
   bc: document.getElementById('bc'),
   rt: document.getElementById('rt'),
 
+hud: document.getElementById('hud'),
+
+pauseRow: document.getElementById('pauseRow'),
+btnResume: document.getElementById('btnResume'),
+btnExit: document.getElementById('btnExit'),
+
   status: document.getElementById('status'),
 
   panel: document.getElementById('panel'),
@@ -175,6 +194,7 @@ const ui = {
   btnDbgMove: document.getElementById('btnDbgMove'),
   btnDbgWeapon: document.getElementById('btnDbgWeapon'),
   btnDbgEnemy: document.getElementById('btnDbgEnemy'),
+btnDbgAsteroid: document.getElementById('btnDbgAsteroid'),
 
   btnDbgPower: document.getElementById('btnDbgPower'),
   btnDbgVel: document.getElementById('btnDbgVel'),
@@ -183,15 +203,22 @@ const ui = {
   btnDbgReload: document.getElementById('btnDbgReload'), // ✅ THIS IS STEP 4
 
   btnDbgBack: document.getElementById('btnDbgBack'),
+
+perkRow: document.getElementById('perkRow'),
+perk1: document.getElementById('perk1'),
+perk2: document.getElementById('perk2'),
+perk3: document.getElementById('perk3'),
+
 };
 
 const ctx = ui.canvas.getContext('2d', { alpha:true });
 
 let hasIMU = false;
 let running = false;
+let isPaused = false;
 
 let mode = 'menu';
-// menu | debugMenu | game | debug_move | debug_weapon | debug_enemy | debug_power | debug_vel | debug_cap | debug_reload
+// menu | debugMenu | game | paused | debug_move | debug_weapon | debug_enemy | debug_asteroid | debug_power | debug_vel | debug_cap | debug_reload
 
 let rawGamma = 0;
 let centerGamma = 0;
@@ -222,34 +249,35 @@ function moveFocus(step){
   list[next].focus();
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 // =========================================================
 // ✅ INPUT (GRID LANES ONLY — NO DASH)
 // Replace: keydown + keyup + touchstart + touchend
 // =========================================================
 document.addEventListener('keydown', (e) => {
 
-  // track held (optional)
-  if (e.key === DPAD.LEFT || e.key === 'a' || e.key === 'A') keyLeft = true;
-  if (e.key === DPAD.RIGHT || e.key === 'd' || e.key === 'D') keyRight = true;
-
   // =========================
   // ✅ GAME INPUT
   // =========================
-  if (running) {
+if (running && mode !== 'perk_select') {
 
-    // ✅ Lane step in BOTH game + debug_move
+  // ✅ TOGGLE PAUSE
+  if (e.key === DPAD.UP) {
+    isPaused = !isPaused;
+
+    if (isPaused) {
+      setMode('paused');
+    } else {
+      setMode('game');
+    }
+
+    e.preventDefault();
+    return;
+  }
+
+  // ✅ IF PAUSED → SKIP GAME INPUT BUT ALLOW MENU INPUT BELOW
+  if (!isPaused) {
+
+    // ✅ movement
     if (e.key === DPAD.LEFT || e.key === 'a' || e.key === 'A') {
       stepLane(-1);
       e.preventDefault();
@@ -262,7 +290,6 @@ document.addEventListener('keydown', (e) => {
       return;
     }
 
-    // ✅ exit to menu
     if (e.key === DPAD.BACK) {
       exitToMenu();
       e.preventDefault();
@@ -271,6 +298,7 @@ document.addEventListener('keydown', (e) => {
 
     return;
   }
+}
 
   // =========================
   // ✅ MENU NAVIGATION
@@ -291,7 +319,9 @@ document.addEventListener('keydown', (e) => {
 
   if (e.key === DPAD.SELECT) {
     const ae = document.activeElement;
-    if (ae && ae.classList && ae.classList.contains('focusable')) ae.click();
+    if (ae && ae.classList && ae.classList.contains('focusable')) {
+      ae.click();
+    }
     e.preventDefault();
     return;
   }
@@ -301,9 +331,7 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     return;
   }
-});
-
-document.addEventListener('keyup', (e) => {
+});document.addEventListener('keyup', (e) => {
   if (e.key === DPAD.LEFT || e.key === 'a' || e.key === 'A') keyLeft = false;
   if (e.key === DPAD.RIGHT || e.key === 'd' || e.key === 'D') keyRight = false;
 });
@@ -475,6 +503,13 @@ function stepLane(dir){
   desiredLane = playerLane;
 }
 
+function isPlayerCenteredInLane(){
+  const targetX = GRID_LANES[playerLane];
+  const threshold = 2; // ✅ pixels tolerance (tune 1–4)
+
+  return Math.abs(playerX - targetX) <= threshold;
+}
+
 // ✅ Dash now means "jump lanes"
 function dashLeft(){
   if (dashCooldown > 0) return;
@@ -510,22 +545,15 @@ function updateMovement(dt){
 
   // ✅ debug_move: ONLY keyboard lane stepping, no gyro influence
   if (mode === 'debug_move' || mode === 'game') {
-    // playerX just eases to current lane (visual polish)
     const targetX = GRID_LANES[playerLane];
     playerX += (targetX - playerX) * Math.min(1, laneLerpSpeed * dt);
 
-    // cooldown timers still tick
     if (dashCooldown > 0) dashCooldown -= dt;
     if (dashTimer > 0) dashTimer -= dt;
 
     return;
   }
 
-  // commit desired lane
-// ✅ keep playerLane only controlled by inputs
-// no automatic overwrite
-
-  // dash animation overrides normal lane easing
   if (dashTimer > 0) {
     dashTimer -= dt;
     const t = 1 - (dashTimer / DASH_TIME);
@@ -537,6 +565,9 @@ function updateMovement(dt){
 
   if (dashCooldown > 0) dashCooldown -= dt;
 }
+
+// ✅ ✅ ✅ ADD THIS RIGHT HERE (outside the function)
+let wasCenteredLastFrame = true;
 /* =========================================================
    ✅ WEAPON SYSTEM (REAL TIME RELOAD)
 ========================================================= */
@@ -657,13 +688,24 @@ bullets.forEach(b => {
   fireTimer -= dt;
 
 
-  if (fireTimer <= 0) {
+
+
+if (fireTimer <= 0) {
+
+  if (isPlayerCenteredInLane()) {
     fire();
     fireTimer = getFireDelay() / 60;
   }
+
+  // ✅ IMPORTANT: do NOT reset timer if not centered
+}
 }
 
 function fire(){
+
+  // ✅ prevent firing while between lanes
+  if (!isPlayerCenteredInLane()) return;
+
   if (ammoInMag <= 0 || isReloading) return;
 
   bullets.push({ x: playerX, y: 520, vx: 0 });
@@ -672,10 +714,215 @@ function fire(){
   if (ammoInMag <= 0) startReload();
 }
 /* =========================================================
+   ✅ LEVEL / XP SYSTEM (TOTAL XP + LEVEL XP + ANIMATED BAR)
+========================================================= */
+
+// Total XP (never resets except on new run) – this is what your pause HUD "Score" shows.
+let score = 0;
+
+// Logical level + XP toward next level (gameplay truth)
+let logicLevel = 1;
+let levelXP = 0;
+
+// Displayed level + animated XP (UI truth)
+let displayLevel = 1;
+let displayXP = 0;
+
+// XP bar animation state machine
+let xpBarState = 'normal'; // 'normal' | 'fill' | 'flash' | 'spill'
+let xpFlashTimer = 0;      // seconds
+let pendingDisplayLevels = 0;
+
+// tuning (feel)
+const XP_FILL_SPEED = 80;   // XP per second while forcing to 100%
+const XP_LERP_SPEED = 10;    // lerp speed during normal/spill (6–14)
+const XP_FLASH_TIME = 0.18;  // yellow flash duration
+
+function getXPRequiredFor(level){
+  // ✅ easier early leveling (tune as needed)
+  // L1->2: 50, L2->3: 70, L3->4: 90...
+  return Math.floor(30 + level * 20);
+}
+
+// Call this whenever you award XP.
+// This updates TOTAL XP immediately, updates LOGICAL level immediately,
+// but the UI level/bar animates with fill->flash->spill.
+function awardXP(amount){
+  if (!Number.isFinite(amount) || amount <= 0) return;
+
+  // total XP
+  score += amount;
+  ui.score.textContent = score;
+
+  // add to current-level XP, and level up logically as needed
+  let tmpLevel = logicLevel;
+  let tmpXP = levelXP + amount;
+
+  while (tmpXP >= getXPRequiredFor(tmpLevel)) {
+    tmpXP -= getXPRequiredFor(tmpLevel);
+    tmpLevel++;
+  }
+
+  logicLevel = tmpLevel;
+  levelXP = tmpXP;
+
+  // queue UI level-ups if the display is behind
+  pendingDisplayLevels = Math.max(0, logicLevel - displayLevel);
+
+  // if we just crossed at least one level, force the UI into "fill to 100" mode
+  if (pendingDisplayLevels > 0 && xpBarState === 'normal') {
+    xpBarState = 'fill';
+  }
+}
+
+// Call this once per frame (in update loop) to animate the bar.
+function updateXPBar(dt){
+  if (!Number.isFinite(dt) || dt <= 0) return;
+
+  const reqDisplay = getXPRequiredFor(displayLevel);
+
+  if (xpBarState === 'normal') {
+    // If logical level is ahead, we need to show fill->flash cycles.
+    if (pendingDisplayLevels > 0) {
+      xpBarState = 'fill';
+      return;
+    }
+
+    // Otherwise, just smoothly follow actual XP (same level)
+    const target = Math.max(0, Math.min(reqDisplay, levelXP));
+    const diff = target - displayXP;
+const step = XP_FILL_SPEED * dt;
+
+if (Math.abs(diff) <= step) {
+  displayXP = target;
+} else {
+  displayXP += Math.sign(diff) * step;
+}
+    return;
+  }
+
+  if (xpBarState === 'fill') {
+    // Force to 100% before leveling UI
+    displayXP += XP_FILL_SPEED * dt;
+    if (displayXP >= reqDisplay) {
+      displayXP = reqDisplay;
+      xpBarState = 'flash';
+      xpFlashTimer = XP_FLASH_TIME;
+    }
+    return;
+  }
+
+  if (xpBarState === 'flash') {
+    xpFlashTimer -= dt;
+    if (xpFlashTimer <= 0) {
+      // Advance displayed level AFTER flash
+      displayLevel++;
+// ✅ trigger perk selection
+generatePerkChoices();
+isPaused = true;
+setMode('perk_select');
+      pendingDisplayLevels = Math.max(0, pendingDisplayLevels - 1);
+
+      // Reset display XP to begin next level bar
+      displayXP = 0;
+
+      // If still more levels queued, immediately fill again.
+      // Otherwise spill leftover for the (now current) level.
+      xpBarState = (pendingDisplayLevels > 0) ? 'fill' : 'spill';
+    }
+    return;
+  }
+
+  if (xpBarState === 'spill') {
+    // Now displayLevel should match logicLevel, so animate leftover XP in.
+    const req = getXPRequiredFor(displayLevel);
+    const target = Math.max(0, Math.min(req, levelXP));
+    const diff = target - displayXP;
+const step = XP_FILL_SPEED * dt;
+
+if (Math.abs(diff) <= step) {
+  displayXP = target;
+  xpBarState = 'normal';
+} else {
+  displayXP += Math.sign(diff) * step;
+}
+
+
+    if (Math.abs(target - displayXP) < 0.25) {
+      displayXP = target;
+      xpBarState = 'normal';
+    }
+    return;
+  }
+}
+
+/* =========================================================
+   ✅ PERK SYSTEM
+========================================================= */
+
+let availablePerks = [
+  {
+    id: 'firerate_common',
+    name: 'Rapid Trigger',
+    desc: '+10% Fire Rate',
+    rarity: 'common',
+    apply: () => {
+      weapon.baseFireDelay *= 0.9; // ✅ faster fire rate
+    }
+  }
+];
+
+// current offered perks
+let activePerkChoices = [];
+
+function generatePerkChoices(count = 3){
+  activePerkChoices = [];
+
+  for (let i = 0; i < count; i++) {
+    const p = availablePerks[Math.floor(Math.random() * availablePerks.length)];
+    activePerkChoices.push(p);
+  }
+}
+
+function renderPerkUI(){
+
+  const slots = [ui.perk1, ui.perk2, ui.perk3];
+
+  for (let i = 0; i < slots.length; i++) {
+    const p = activePerkChoices[i];
+
+    if (!p) continue;
+
+    // ✅ multi-line button content
+    slots[i].innerHTML = `
+      <div style="text-align:center;">
+        <div>${p.name}</div>
+        <div style="font-size:14px; opacity:0.7;">${p.desc}</div>
+        <div style="font-size:12px; color:#ffd400;">${p.rarity.toUpperCase()}</div>
+      </div>
+    `;
+  }
+}
+
+function pickPerk(index){
+  const perk = activePerkChoices[index];
+  if (!perk) return;
+
+  // ✅ apply the effect
+  perk.apply();
+
+  // ✅ resume game
+  isPaused = false;
+  running = true;
+
+  setMode('game');
+}
+
+/* =========================================================
    ✅ ENEMY SYSTEM
 ========================================================= */
 let enemies = [];
-let score = 0;
+
 
 function spawnEnemies(){
   enemies = [];
@@ -704,8 +951,92 @@ function handleBulletsVsEnemies(){
       if (hit) {
         bullets.splice(bi, 1);
         e.alive = false;
-        score += 10;
-        ui.score.textContent = score;
+awardXP(10);
+        break;
+      }
+    }
+  }
+}
+
+/* =========================================================
+   ✅ ENEMY TYPE: ASTEROID (FALLS DOWN, 1 HP)
+   Built to extend later (shooting, lane changes, more HP)
+========================================================= */
+
+let asteroids = [];
+let asteroidSpawnTimer = 0;
+
+// tuning
+const ASTEROID_SPAWN_INTERVAL = 1.2; // seconds (game mode)
+const ASTEROID_FALL_SPEED_MIN = 0.35; // "60fps units"
+const ASTEROID_FALL_SPEED_MAX = 0.65; // "60fps units"
+
+// create one asteroid (lane-based)
+function createAsteroid(){
+  return {
+    type: 'asteroid',
+    x: getRandomLaneX(),
+    y: -20,
+    w: 22,
+    h: 22,
+    hp: 1,
+    fall: randRange(ASTEROID_FALL_SPEED_MIN, ASTEROID_FALL_SPEED_MAX)
+  };
+}
+
+// spawn logic (debug forces asteroid only)
+function spawnAsteroid(){
+  asteroids.push(createAsteroid());
+}
+
+// update + collisions
+function updateAsteroids(dt){
+
+  // spawn rules
+  if (mode === 'debug_asteroid') {
+    asteroidSpawnTimer -= dt;
+    if (asteroidSpawnTimer <= 0) {
+      spawnAsteroid();
+      asteroidSpawnTimer = 0.6; // seconds between spawns in debug
+    }
+  } else if (mode === 'game') {
+    asteroidSpawnTimer -= dt;
+    if (asteroidSpawnTimer <= 0) {
+      spawnAsteroid();
+      asteroidSpawnTimer = ASTEROID_SPAWN_INTERVAL;
+    }
+  }
+
+  // movement (dt based; fall is tuned like your old per-frame values)
+  asteroids.forEach(a => {
+    a.y += a.fall * dt * 60;
+  });
+
+  // cleanup offscreen
+  asteroids = asteroids.filter(a => a.y < 640);
+
+  handleBulletsVsAsteroids();
+}
+
+function handleBulletsVsAsteroids(){
+  for (let ai = asteroids.length - 1; ai >= 0; ai--) {
+    const a = asteroids[ai];
+
+    for (let bi = bullets.length - 1; bi >= 0; bi--) {
+      const b = bullets[bi];
+
+      const hit =
+        b.x >= (a.x - a.w/2) && b.x <= (a.x + a.w/2) &&
+        b.y >= (a.y - a.h/2) && b.y <= (a.y + a.h/2);
+
+      if (hit) {
+        bullets.splice(bi, 1);
+        a.hp--;
+
+        if (a.hp <= 0) {
+          asteroids.splice(ai, 1);
+awardXP(5);
+        }
         break;
       }
     }
@@ -921,8 +1252,7 @@ function grantPowerUp(p){
   if (p.type === 'stat_capacity')   applyCapacityBoost(p.power);
   if (p.type === 'stat_reload')     applyReloadBoost(p.power);
 
-  score += 100;
-  ui.score.textContent = score;
+awardXP(25); // suggested: powerups give less XP than score value, tune as desired
 }
 
 /* =========================================================
@@ -930,6 +1260,35 @@ function grantPowerUp(p){
 ========================================================= */
 function draw(){
   ctx.clearRect(0, 0, 600, 600);
+
+// =========================
+// ✅ LEVEL PROGRESS BAR (TOP)
+// =========================
+if (running || isPaused) {
+
+  const xpRequired = getXPRequiredFor(displayLevel);
+  const progress = (xpRequired > 0) ? (displayXP / xpRequired) : 0;
+
+  const barHeight = 10;
+
+  // background
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.fillRect(0, 0, 600, barHeight);
+
+  // bar color: flash yellow on level-up
+  const barColor = (xpBarState === 'flash') ? '#ffd400' : '#00d4ff';
+
+  // progress
+  ctx.fillStyle = barColor;
+  ctx.fillRect(0, 0, 600 * Math.max(0, Math.min(1, progress)), barHeight);
+
+  // level text
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '14px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText("Lv " + displayLevel, 6, barHeight + 4);
+}
 
   // border
   ctx.strokeStyle = 'rgba(0,212,255,0.10)';
@@ -1029,6 +1388,12 @@ if (running) {
   ctx.fillStyle = '#ffffff';
   bullets.forEach(b => ctx.fillRect(b.x - 2, b.y, 4, 10));
 
+// ASTEROIDS
+ctx.fillStyle = 'rgba(200,200,200,0.95)';
+asteroids.forEach(a => {
+  ctx.fillRect(a.x - a.w/2, a.y - a.h/2, a.w, a.h);
+});
+
   // ENEMIES
   ctx.fillStyle = '#ff3355';
   enemies.forEach(e => {
@@ -1121,15 +1486,30 @@ if (running) {
 ========================================================= */
 
 function resetRunState(){
+
+// ✅ LEVEL / XP RESET
+score = 0;
+logicLevel = 1;
+levelXP = 0;
+
+displayLevel = 1;
+displayXP = 0;
+
+xpBarState = 'normal';
+xpFlashTimer = 0;
+pendingDisplayLevels = 0;
+
+ui.score.textContent = score;
+
   bullets = [];
   fireTimer = 0;
+
+asteroids = [];
+asteroidSpawnTimer = 0;
 
   enemies = [];
   powerUps = [];
   powerUpSpawnTimer = 60;
-
-  score = 0;
-  ui.score.textContent = score;
 
   initWeaponState();
 }
@@ -1138,8 +1518,37 @@ function setMode(nextMode){
   mode = nextMode;
   ui.status.textContent = nextMode;
 
+// ✅ HUD visibility
+if (nextMode === 'paused') {
+  ui.hud.classList.remove('hidden');
+  ui.hud.style.top = '40px'; // ✅ SHIFT DOWN
+} else {
+  ui.hud.classList.add('hidden');
+  ui.hud.style.top = '0px'; // ✅ RESET
+}
+
   ui.menuRow.classList.add('hidden');
   ui.debugRow.classList.add('hidden');
+  ui.pauseRow.classList.add('hidden');
+ui.perkRow.classList.add('hidden'); // ✅ ADD THIS
+document.getElementById('title').classList.remove('hideInPerk');
+document.getElementById('subtitle').classList.remove('hideInPerk');
+
+ui.perkRow.classList.add('hidden');
+if (nextMode === 'perk_select') {
+
+  document.getElementById('title').classList.add('hideInPerk');
+  document.getElementById('subtitle').classList.add('hideInPerk');
+
+  ui.panel.classList.remove('hidden');
+  ui.perkRow.classList.remove('hidden');
+
+  renderPerkUI();
+
+  ui.perk2.focus();
+  setTimeout(ensureFocus, 0);
+  return;
+}
 
   if (nextMode === 'menu') {
     ui.panel.classList.remove('hidden');
@@ -1158,6 +1567,14 @@ function setMode(nextMode){
     setTimeout(ensureFocus, 0);
     return;
   }
+if (nextMode === 'paused') {
+  ui.panel.classList.remove('hidden');
+  ui.pauseRow.classList.remove('hidden');
+
+  ui.btnResume.focus();
+  setTimeout(ensureFocus, 0);
+  return;
+}
 
   ui.panel.classList.add('hidden');
 }
@@ -1176,6 +1593,14 @@ function startRun(runMode){
   running = true;
 
   resetRunState();
+
+if (runMode === 'debug_asteroid') {
+  asteroidSpawnTimer = 0.1; // spawn almost immediately
+}
+if (runMode === 'game') {
+  asteroidSpawnTimer = 1.0; // game spawn delay
+}
+
   centerGamma = rawGamma;
 
   if (runMode === 'game') spawnEnemies();
@@ -1211,27 +1636,30 @@ function update(now){
     // movement always ticks
     updateMovement(dt);
 
-    if (running) {
-      // weapons (dt-based reload)
-      updateWeapons(dt);
+updateXPBar(dt);
 
-      // enemies only in these modes
-      if (mode === 'game' || mode === 'debug_enemy') {
-        updateEnemies();
-        handleBulletsVsEnemies();
-      }
+if (running && !isPaused) {
+  updateWeapons(dt);
 
-      // powerups in these modes
-      if (
-        mode === 'game' ||
-        mode === 'debug_power' ||
-        mode === 'debug_vel' ||
-        mode === 'debug_cap' ||
-        mode === 'debug_reload'
-      ) {
-        updatePowerUps(dt);
-      }
-    }
+  if (mode === 'game' || mode === 'debug_enemy') {
+    updateEnemies();
+    handleBulletsVsEnemies();
+  }
+
+  if (mode === 'game' || mode === 'debug_asteroid') {
+    updateAsteroids(dt);
+  }
+
+  if (
+    mode === 'game' ||
+    mode === 'debug_power' ||
+    mode === 'debug_vel' ||
+    mode === 'debug_cap' ||
+    mode === 'debug_reload'
+  ) {
+    updatePowerUps(dt);
+  }
+}
 
     draw();
 
@@ -1254,7 +1682,20 @@ requestAnimationFrame(update);
    ✅ UI WIRING
 ========================================================= */
 
+ui.btnResume.addEventListener('click', () => {
+  isPaused = false;
+  setMode('game');
+});
+
+ui.btnExit.addEventListener('click', () => {
+  isPaused = false;
+  exitToMenu();
+});
+
 ui.btnStart.addEventListener('click', () => startRun('game'));
+ui.perk1.addEventListener('click', () => pickPerk(0));
+ui.perk2.addEventListener('click', () => pickPerk(1));
+ui.perk3.addEventListener('click', () => pickPerk(2));
 
 // ✅ Debug menu open
 ui.btnDebug.addEventListener('click', () => setMode('debugMenu'));
@@ -1262,11 +1703,13 @@ ui.btnDebug.addEventListener('click', () => setMode('debugMenu'));
 ui.btnDbgMove.addEventListener('click', () => startRun('debug_move'));
 ui.btnDbgWeapon.addEventListener('click', () => startRun('debug_weapon'));
 ui.btnDbgEnemy.addEventListener('click', () => startRun('debug_enemy'));
+ui.btnDbgAsteroid.addEventListener('click', () => startRun('debug_asteroid'));
 
 ui.btnDbgPower.addEventListener('click', () => startRun('debug_power'));
 ui.btnDbgVel.addEventListener('click', () => startRun('debug_vel'));
 ui.btnDbgCap.addEventListener('click', () => startRun('debug_cap'));
 ui.btnDbgReload.addEventListener('click', () => startRun('debug_reload'));
+
 
 ui.btnDbgBack.addEventListener('click', () => setMode('menu'));
 
