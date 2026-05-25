@@ -86,11 +86,18 @@
       user-select:none;
     }
 
-    .focusable:focus {
-      outline:none;
-      border-color: var(--cyan);
-      box-shadow: 0 0 22px rgba(0,212,255,0.45);
-    }
+.focusable:focus {
+  outline: none;
+
+  /* ✅ KEEP rarity border color intact */
+  
+  /* ✅ ADD INNER WHITE HIGHLIGHT */
+  box-shadow:
+    0 0 0 2px #ffffff inset,  /* white inner ring */
+    0 0 12px rgba(255,255,255,0.6); /* soft glow */
+
+  transform: scale(1.05);
+}
 
     .focusable[disabled]{ opacity:0.45; }
 
@@ -105,21 +112,37 @@
 <div id="app">
   <canvas id="c" width="600" height="600"></canvas>
 
-<div id="hud" class="hidden">
-  <!-- LEFT: Player Stats -->
-  <div style="display:flex; flex-direction:column; gap:6px;">
+<div id="hud" class="hidden" style="
+  display:flex;
+  justify-content: space-between;
+  padding: 6px;
+  gap: 10px;
+">
+
+  <!-- ✅ STATS GRID (3 columns) -->
+<div style="
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  align-items: start;
+  flex: 1;              /* ✅ THIS FIX */
+  width: 100%;          /* ✅ ensures full stretch */
+">
     <div class="pill">Score <strong id="score">0</strong></div>
     <div class="pill">FireRate <strong id="fd">0</strong></div>
+    <div class="pill">Reload <strong id="rt">0</strong></div>
+
     <div class="pill">Bullet Velocity <strong id="bs">0</strong></div>
     <div class="pill">Capacity <strong id="bc">0</strong></div>
-    <div class="pill">Reload <strong id="rt">0</strong></div> <!-- ✅ NEW -->
+<div class="pill">Luck <strong id="luck">0</strong></div>
   </div>
 
-  <!-- RIGHT: Status -->
-  <div class="pill">
-    <span id="status">Menu</span>
-  </div>
+<span id="status" class="hidden"></span>
+
+
+
 </div>
+
 
 <div id="panel">
 <p id="title" class="panelText">TiltGala</p>
@@ -154,6 +177,16 @@
   <button id="perk1" class="focusable"></button>
   <button id="perk2" class="focusable"></button>
   <button id="perk3" class="focusable"></button>
+<button id="btnReroll" class="focusable" style="
+  margin-top: 8px;
+  font-size: 14px;
+  min-height: 50px;
+  background: rgba(255,212,0,0.15);
+  border-color: rgba(255,212,0,0.4);
+">
+  Reroll
+</button>
+
 </div>
 </div>
 
@@ -176,13 +209,15 @@ const ui = {
   bc: document.getElementById('bc'),
   rt: document.getElementById('rt'),
 
+luck: document.getElementById('luck'),
+
 hud: document.getElementById('hud'),
+
+status: document.getElementById('status'),
 
 pauseRow: document.getElementById('pauseRow'),
 btnResume: document.getElementById('btnResume'),
 btnExit: document.getElementById('btnExit'),
-
-  status: document.getElementById('status'),
 
   panel: document.getElementById('panel'),
   menuRow: document.getElementById('menuRow'),
@@ -208,6 +243,7 @@ perkRow: document.getElementById('perkRow'),
 perk1: document.getElementById('perk1'),
 perk2: document.getElementById('perk2'),
 perk3: document.getElementById('perk3'),
+btnReroll: document.getElementById('btnReroll'),
 
 };
 
@@ -216,8 +252,9 @@ const ctx = ui.canvas.getContext('2d', { alpha:true });
 let hasIMU = false;
 let running = false;
 let isPaused = false;
-
 let mode = 'menu';
+let playerLuck = 0;
+
 // menu | debugMenu | game | paused | debug_move | debug_weapon | debug_enemy | debug_asteroid | debug_power | debug_vel | debug_cap | debug_reload
 
 let rawGamma = 0;
@@ -592,7 +629,7 @@ let isReloading = false;
 let reloadTimer = 0; // ✅ NOW IN SECONDS
 
 function getFireDelay(){
-  return Math.max(3, Math.round(
+  return Math.max(6, Math.round(
     weapon.baseFireDelay - weapon.bonusFireDelay
   ));
 }
@@ -729,7 +766,7 @@ let displayLevel = 1;
 let displayXP = 0;
 
 // XP bar animation state machine
-let xpBarState = 'normal'; // 'normal' | 'fill' | 'flash' | 'spill'
+let xpBarState = 'normal'; // 'normal' | 'fill' | 'flash' | 'perk_hold' | 'spill'
 let xpFlashTimer = 0;      // seconds
 let pendingDisplayLevels = 0;
 
@@ -779,6 +816,8 @@ function awardXP(amount){
 function updateXPBar(dt){
   if (!Number.isFinite(dt) || dt <= 0) return;
 
+if (xpBarState === 'perk_hold') return;
+
   const reqDisplay = getXPRequiredFor(displayLevel);
 
   if (xpBarState === 'normal') {
@@ -814,24 +853,23 @@ if (Math.abs(diff) <= step) {
 
   if (xpBarState === 'flash') {
     xpFlashTimer -= dt;
-    if (xpFlashTimer <= 0) {
-      // Advance displayed level AFTER flash
-      displayLevel++;
-// ✅ trigger perk selection
-generatePerkChoices();
-isPaused = true;
-setMode('perk_select');
-      pendingDisplayLevels = Math.max(0, pendingDisplayLevels - 1);
+if (xpFlashTimer <= 0) {
 
-      // Reset display XP to begin next level bar
-      displayXP = 0;
+  // Advance displayed level AFTER flash
+  displayLevel++;
+  pendingDisplayLevels = Math.max(0, pendingDisplayLevels - 1);
 
-      // If still more levels queued, immediately fill again.
-      // Otherwise spill leftover for the (now current) level.
-      xpBarState = (pendingDisplayLevels > 0) ? 'fill' : 'spill';
-    }
-    return;
-  }
+  // ✅ HOLD bar full + yellow while perk UI is open
+  displayXP = getXPRequiredFor(displayLevel);
+  xpBarState = 'perk_hold';
+
+  // ✅ open perk UI
+  generatePerkChoices();
+  isPaused = true;
+  setMode('perk_select');
+
+  return;
+}  }
 
   if (xpBarState === 'spill') {
     // Now displayLevel should match logicLevel, so animate leftover XP in.
@@ -861,46 +899,173 @@ if (Math.abs(diff) <= step) {
 ========================================================= */
 
 let availablePerks = [
+
+// ✅ COMMON
+{
+  id: 'firerate_common',
+  name: 'Rapid Trigger',
+  desc: '+6 Fire Rate',
+  rarity: 'common',
+  apply: () => {
+    weapon.bonusFireDelay += 6;
+  }
+},
+
+// ✅ UNCOMMON
+{
+  id: 'firerate_uncommon',
+  name: 'Rapid Trigger+',
+  desc: '+10 Fire Rate',
+  rarity: 'uncommon',
+  apply: () => {
+    weapon.bonusFireDelay += 10;
+  }
+},
+
+// ✅ RARE
+{
+  id: 'firerate_rare',
+  name: 'Hyper Trigger',
+  desc: '+16 Fire Rate',
+  rarity: 'rare',
+  apply: () => {
+    weapon.bonusFireDelay += 16;
+  }
+},
+
+// ✅ EPIC
+{
+  id: 'firerate_epic',
+  name: 'Overdrive Trigger',
+  desc: '+22 Fire Rate',
+  rarity: 'epic',
+  apply: () => {
+    weapon.bonusFireDelay += 22;
+  }
+},
+
+// ✅ LEGENDARY
+{
+  id: 'firerate_legendary',
+  name: 'God Trigger',
+  desc: '+30 Fire Rate',
+  rarity: 'legendary',
+  apply: () => {
+    weapon.bonusFireDelay += 30;
+  }
+},
+
+  // ✅ LUCK - RARE
   {
-    id: 'firerate_common',
-    name: 'Rapid Trigger',
-    desc: '+10% Fire Rate',
-    rarity: 'common',
+    id: 'luck_rare',
+    name: 'Lucky Core',
+    desc: '+0.2 Luck',
+    rarity: 'rare',
     apply: () => {
-      weapon.baseFireDelay *= 0.9; // ✅ faster fire rate
+      playerLuck += 0.2;
+    }
+  },
+
+  // ✅ LUCK - EPIC
+  {
+    id: 'luck_epic',
+    name: 'Fortune Engine',
+    desc: '+0.5 Luck',
+    rarity: 'epic',
+    apply: () => {
+      playerLuck += 0.5;
     }
   }
+
 ];
 
 // current offered perks
 let activePerkChoices = [];
 
+// ✅ Base rarity weights (commons are normal; higher tiers exponentially rarer)
+const RARITY_WEIGHTS_BASE = {
+  common: 70,
+  uncommon: 20,
+  rare: 8,
+  epic: 1.8,
+  legendary: 0.2
+};
+
+function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+
+// ✅ Luck modifies weights: higher rarities benefit more than lower rarities.
+// playerLuck is intended to be small (e.g., 0.0 → 1.0 range).
+function getModifiedRarityWeights(){
+  const luck = clamp(playerLuck, 0, 2); // allow growth later, but clamp to avoid extremes
+
+  // Start from base weights
+  const w = { ...RARITY_WEIGHTS_BASE };
+
+  // Reduce common slightly as luck rises, and boost higher tiers more aggressively
+  w.common    *= (1 - 0.25 * luck);      // up to -50% at luck=2
+  w.uncommon  *= (1 + 0.20 * luck);
+  w.rare      *= (1 + 0.60 * luck);
+  w.epic      *= (1 + 1.30 * luck);
+  w.legendary *= (1 + 2.20 * luck);
+
+  // Safety: don’t let common go negative
+  w.common = Math.max(1, w.common);
+
+  return w;
+}
+
+// ✅ Standard weighted roll using cumulative weights (common approach)
+function rollRarity(){
+  const weights = getModifiedRarityWeights();
+  const entries = Object.entries(weights);
+
+  const total = entries.reduce((sum, [,w]) => sum + w, 0);
+  let r = Math.random() * total;
+
+  for (const [rarity, w] of entries){
+    if (r < w) return rarity;
+    r -= w;
+  }
+  return 'common';
+}
+
+function getPerksByRarity(rarity){
+  return availablePerks.filter(p => p.rarity === rarity);
+}
+
+
+
 function generatePerkChoices(count = 3){
   activePerkChoices = [];
 
+  // We'll try to avoid duplicates when possible
+  const usedIds = new Set();
+
   for (let i = 0; i < count; i++) {
-    const p = availablePerks[Math.floor(Math.random() * availablePerks.length)];
-    activePerkChoices.push(p);
-  }
-}
 
-function renderPerkUI(){
+    // 1) roll rarity first
+    const rarity = rollRarity();
 
-  const slots = [ui.perk1, ui.perk2, ui.perk3];
+    // 2) pick from that rarity pool
+    let pool = getPerksByRarity(rarity);
 
-  for (let i = 0; i < slots.length; i++) {
-    const p = activePerkChoices[i];
+    // remove already-used perks if possible
+    const filtered = pool.filter(p => !usedIds.has(p.id));
+    if (filtered.length) pool = filtered;
 
-    if (!p) continue;
+    // fallback if pool empty (e.g., you don't have epic perks yet)
+    if (!pool.length) {
+      const fallback = availablePerks.filter(p => !usedIds.has(p.id));
+      const finalPool = fallback.length ? fallback : availablePerks;
+      const pick = finalPool[Math.floor(Math.random() * finalPool.length)];
+      activePerkChoices.push(pick);
+      usedIds.add(pick.id);
+      continue;
+    }
 
-    // ✅ multi-line button content
-    slots[i].innerHTML = `
-      <div style="text-align:center;">
-        <div>${p.name}</div>
-        <div style="font-size:14px; opacity:0.7;">${p.desc}</div>
-        <div style="font-size:12px; color:#ffd400;">${p.rarity.toUpperCase()}</div>
-      </div>
-    `;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    activePerkChoices.push(pick);
+    usedIds.add(pick.id);
   }
 }
 
@@ -908,10 +1073,80 @@ function pickPerk(index){
   const perk = activePerkChoices[index];
   if (!perk) return;
 
-  // ✅ apply the effect
   perk.apply();
 
-  // ✅ resume game
+displayXP = 0;      // start the new bar from empty
+xpBarState = 'spill'; // animate leftover XP into the new level bar
+
+  isPaused = false;
+  running = true;
+
+  setMode('game');
+}
+
+// ✅ ✅ ADD THIS RIGHT HERE
+function rerollPerks(){
+  generatePerkChoices();   // new perks
+  renderPerkUI();          // redraw buttons
+
+  ui.perk2.focus();        // go back to middle option
+}
+
+function renderPerkUI(){
+
+  const slots = [ui.perk1, ui.perk2, ui.perk3];
+
+for (let i = 0; i < slots.length; i++) {
+  const p = activePerkChoices[i];
+  if (!p) continue;
+
+  // ✅ RARITY COLORS
+  let color = '#dddddd'; // common (off white)
+
+  if (p.rarity === 'uncommon') color = '#4cff4c';   // green
+  if (p.rarity === 'rare') color = '#66ccff';       // light blue
+  if (p.rarity === 'epic') color = '#b84cff';       // purple
+  if (p.rarity === 'legendary') color = '#ff9933';  // orange
+
+  // ✅ APPLY BORDER COLOR
+  slots[i].style.borderColor = color;
+
+  // ✅ OPTIONAL GLOW (for non-common)
+if (p.rarity !== 'common') {
+  slots[i].style.boxShadow = `0 0 6px ${color}`;
+} else {
+  slots[i].style.boxShadow = '';
+}
+
+  // ✅ BUTTON CONTENT
+  slots[i].innerHTML = `
+    <div style="text-align:center;">
+      <div>${p.name}</div>
+      <div style="font-size:14px; opacity:0.7;">${p.desc}</div>
+      <div style="font-size:12px; color:${color};">${p.rarity.toUpperCase()}</div>
+    </div>
+  `;
+}
+
+}
+
+function pickPerk(index){
+  const perk = activePerkChoices[index];
+  if (!perk) return;
+
+  // ✅ apply perk
+  perk.apply();
+
+  // ✅ resume XP flow properly
+  displayXP = 0;
+
+  if (pendingDisplayLevels > 0) {
+    xpBarState = 'fill'; // more levels queued
+  } else {
+    xpBarState = 'spill'; // continue leftover XP
+  }
+
+  // ✅ resume gameplay
   isPaused = false;
   running = true;
 
@@ -1035,7 +1270,7 @@ function handleBulletsVsAsteroids(){
 
         if (a.hp <= 0) {
           asteroids.splice(ai, 1);
-awardXP(5);
+awardXP(10);
         }
         break;
       }
@@ -1276,7 +1511,10 @@ if (running || isPaused) {
   ctx.fillRect(0, 0, 600, barHeight);
 
   // bar color: flash yellow on level-up
-  const barColor = (xpBarState === 'flash') ? '#ffd400' : '#00d4ff';
+  const barColor = (xpBarState === 'flash' || mode === 'perk_select')
+  ? '#ffd400'
+  : '#00d4ff';
+
 
   // progress
   ctx.fillStyle = barColor;
@@ -1288,6 +1526,24 @@ if (running || isPaused) {
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
   ctx.fillText("Lv " + displayLevel, 6, barHeight + 4);
+// ✅ LEVEL UP TEXT (PERK SCREEN ONLY)
+if (mode === 'perk_select') {
+  ctx.fillStyle = '#ffd400';
+  ctx.font = '20px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+
+  ctx.fillText("LEVEL UP", 300, barHeight + 6);
+}
+// ✅ PAUSED TEXT (PAUSE SCREEN ONLY)
+if (mode === 'paused') {
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '20px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+
+  ctx.fillText("PAUSED", 300, barHeight + 6);
+}
 }
 
   // border
@@ -1480,6 +1736,7 @@ asteroids.forEach(a => {
   ui.bs.textContent = getBulletSpeed().toFixed(1);
   ui.bc.textContent = getMagSize();
   ui.rt.textContent = (getReloadTime() / 60).toFixed(1);
+ui.luck.textContent = (1 + playerLuck).toFixed(2);
 }
 /* =========================================================
    ✅ MODE / NAV + RUN START (REQUIRED FOR DEBUG MENU)
@@ -1514,46 +1771,42 @@ asteroidSpawnTimer = 0;
   initWeaponState();
 }
 
+
+
+
+
+
+
 function setMode(nextMode){
   mode = nextMode;
-  ui.status.textContent = nextMode;
 
-// ✅ HUD visibility
-if (nextMode === 'paused') {
-  ui.hud.classList.remove('hidden');
-  ui.hud.style.top = '40px'; // ✅ SHIFT DOWN
-} else {
-  ui.hud.classList.add('hidden');
-  ui.hud.style.top = '0px'; // ✅ RESET
-}
+  // ✅ We keep status purely as a hidden debug string target (no UI space used)
+  if (ui.status) ui.status.textContent = '';
 
+  // ✅ HUD visibility: show stats during pause + perk screen, hide otherwise
+  if (nextMode === 'paused' || nextMode === 'perk_select') {
+    ui.hud.classList.remove('hidden');
+    ui.hud.style.top = '40px';
+  } else {
+    ui.hud.classList.add('hidden');
+    ui.hud.style.top = '0px';
+  }
+
+  // hide all rows by default
   ui.menuRow.classList.add('hidden');
   ui.debugRow.classList.add('hidden');
   ui.pauseRow.classList.add('hidden');
-ui.perkRow.classList.add('hidden'); // ✅ ADD THIS
-document.getElementById('title').classList.remove('hideInPerk');
-document.getElementById('subtitle').classList.remove('hideInPerk');
+  ui.perkRow.classList.add('hidden');
+  ui.btnReroll.classList.add('hidden');
 
-ui.perkRow.classList.add('hidden');
-if (nextMode === 'perk_select') {
+  // restore title/subtitle by default
+  document.getElementById('title').classList.remove('hideInPerk');
+  document.getElementById('subtitle').classList.remove('hideInPerk');
 
-  document.getElementById('title').classList.add('hideInPerk');
-  document.getElementById('subtitle').classList.add('hideInPerk');
-
-  ui.panel.classList.remove('hidden');
-  ui.perkRow.classList.remove('hidden');
-
-  renderPerkUI();
-
-  ui.perk2.focus();
-  setTimeout(ensureFocus, 0);
-  return;
-}
-
+  // ----- MODE ROUTES -----
   if (nextMode === 'menu') {
     ui.panel.classList.remove('hidden');
     ui.menuRow.classList.remove('hidden');
-
     ui.btnStart.focus();
     setTimeout(ensureFocus, 0);
     return;
@@ -1562,20 +1815,34 @@ if (nextMode === 'perk_select') {
   if (nextMode === 'debugMenu') {
     ui.panel.classList.remove('hidden');
     ui.debugRow.classList.remove('hidden');
-
     ui.btnDbgMove.focus();
     setTimeout(ensureFocus, 0);
     return;
   }
-if (nextMode === 'paused') {
-  ui.panel.classList.remove('hidden');
-  ui.pauseRow.classList.remove('hidden');
 
-  ui.btnResume.focus();
-  setTimeout(ensureFocus, 0);
-  return;
-}
+  if (nextMode === 'paused') {
+    ui.panel.classList.remove('hidden');
+    ui.pauseRow.classList.remove('hidden');
+    ui.btnResume.focus();
+    setTimeout(ensureFocus, 0);
+    return;
+  }
 
+  if (nextMode === 'perk_select') {
+    document.getElementById('title').classList.add('hideInPerk');
+    document.getElementById('subtitle').classList.add('hideInPerk');
+
+    ui.panel.classList.remove('hidden');
+    ui.perkRow.classList.remove('hidden');
+    ui.btnReroll.classList.remove('hidden');
+
+    renderPerkUI();
+    ui.perk2.focus();
+    setTimeout(ensureFocus, 0);
+    return;
+  }
+
+  // all other modes (game/debug_*): hide panel
   ui.panel.classList.add('hidden');
 }
 
@@ -1697,6 +1964,8 @@ ui.perk1.addEventListener('click', () => pickPerk(0));
 ui.perk2.addEventListener('click', () => pickPerk(1));
 ui.perk3.addEventListener('click', () => pickPerk(2));
 
+ui.btnReroll.addEventListener('click', rerollPerks);
+
 // ✅ Debug menu open
 ui.btnDebug.addEventListener('click', () => setMode('debugMenu'));
 
@@ -1714,5 +1983,8 @@ ui.btnDbgReload.addEventListener('click', () => startRun('debug_reload'));
 ui.btnDbgBack.addEventListener('click', () => setMode('menu'));
 
 </script>
+
+</div>
+</div>
 </body>
 </html>
