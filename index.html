@@ -174,6 +174,22 @@
   </div>
 
 <div class="row hidden" id="perkRow" style="flex-direction: column;">
+
+<div id="rarityLegend" style="
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  font-size: 10px;
+  margin-bottom: 1px;
+  opacity: 0.85;
+">
+  <span style="color:#dddddd;">COMMON</span>
+  <span style="color:#4cff4c;">UNCOMMON</span>
+  <span style="color:#66ccff;">RARE</span>
+  <span style="color:#b84cff;">EPIC</span>
+  <span style="color:#ff9933;">LEGENDARY</span>
+</div>
+
   <button id="perk1" class="focusable"></button>
   <button id="perk2" class="focusable"></button>
   <button id="perk3" class="focusable"></button>
@@ -253,6 +269,7 @@ let hasIMU = false;
 let running = false;
 let isPaused = false;
 let mode = 'menu';
+let previousMode = 'menu'; // ✅ track mode before perk screen
 let playerLuck = 0;
 
 // menu | debugMenu | game | paused | debug_move | debug_weapon | debug_enemy | debug_asteroid | debug_power | debug_vel | debug_cap | debug_reload
@@ -292,53 +309,44 @@ function moveFocus(step){
 // =========================================================
 document.addEventListener('keydown', (e) => {
 
-  // =========================
-  // ✅ GAME INPUT
-  // =========================
-if (running && mode !== 'perk_select') {
+// =========================
+// ✅ GAME INPUT (ONLY when NOT paused and NOT perk_select)
+// =========================
+if (running && !isPaused && mode !== 'perk_select') {
 
-  // ✅ TOGGLE PAUSE
-  if (e.key === DPAD.UP) {
-    isPaused = !isPaused;
+  // ✅ Open pause (only opens, never closes via UP)
+if (e.key === DPAD.UP) {
+  previousMode = mode;     // ✅ remember what we were testing
+  isPaused = true;
+  setMode('paused');
+  e.preventDefault();
+  return;
+}
 
-    if (isPaused) {
-      setMode('paused');
-    } else {
-      setMode('game');
-    }
-
+  // ✅ movement (only during gameplay)
+  if (e.key === DPAD.LEFT || e.key === 'a' || e.key === 'A') {
+    stepLane(-1);
     e.preventDefault();
     return;
   }
 
-  // ✅ IF PAUSED → SKIP GAME INPUT BUT ALLOW MENU INPUT BELOW
-  if (!isPaused) {
-
-    // ✅ movement
-    if (e.key === DPAD.LEFT || e.key === 'a' || e.key === 'A') {
-      stepLane(-1);
-      e.preventDefault();
-      return;
-    }
-
-    if (e.key === DPAD.RIGHT || e.key === 'd' || e.key === 'D') {
-      stepLane(+1);
-      e.preventDefault();
-      return;
-    }
-
-    if (e.key === DPAD.BACK) {
-      exitToMenu();
-      e.preventDefault();
-      return;
-    }
-
+  if (e.key === DPAD.RIGHT || e.key === 'd' || e.key === 'D') {
+    stepLane(+1);
+    e.preventDefault();
     return;
   }
+
+  if (e.key === DPAD.BACK) {
+    exitToMenu();
+    e.preventDefault();
+    return;
+  }
+
+  return;
 }
 
   // =========================
-  // ✅ MENU NAVIGATION
+  // ✅ MENU NAVIGATION (WORKS FOR DEBUG + PERKS + PAUSE)
   // =========================
   ensureFocus();
 
@@ -368,7 +376,9 @@ if (running && mode !== 'perk_select') {
     e.preventDefault();
     return;
   }
-});document.addEventListener('keyup', (e) => {
+});
+
+document.addEventListener('keyup', (e) => {
   if (e.key === DPAD.LEFT || e.key === 'a' || e.key === 'A') keyLeft = false;
   if (e.key === DPAD.RIGHT || e.key === 'd' || e.key === 'D') keyRight = false;
 });
@@ -669,9 +679,10 @@ function finishReload(){
 }
 
 function initWeaponState(){
-  ammoInMag = getMagSize();
-  isReloading = false;
-  reloadTimer = 0;
+  ammoInMag = 0;          // ✅ start empty
+  isReloading = true;     // ✅ immediately start reload
+  reloadTimer = (getReloadTime() / 60) * 0.75; // ✅ begin reload countdown
+
   fireTimer = 0;
 
   weapon.bonusFireDelay = 0;
@@ -866,7 +877,8 @@ if (xpFlashTimer <= 0) {
   // ✅ open perk UI
   generatePerkChoices();
   isPaused = true;
-  setMode('perk_select');
+  previousMode = mode;   // ✅ remember where we came from
+setMode('perk_select');
 
   return;
 }  }
@@ -1073,15 +1085,23 @@ function pickPerk(index){
   const perk = activePerkChoices[index];
   if (!perk) return;
 
+  // ✅ apply perk
   perk.apply();
 
-displayXP = 0;      // start the new bar from empty
-xpBarState = 'spill'; // animate leftover XP into the new level bar
+  // ✅ resume XP bar after perk
+  displayXP = 0;
+  xpBarState = (pendingDisplayLevels > 0) ? 'fill' : 'spill';
 
+  // ✅ resume gameplay
   isPaused = false;
   running = true;
 
-  setMode('game');
+  // ✅ return to what we were testing (debug stays isolated)
+  if (typeof previousMode === 'string' && previousMode.startsWith('debug_')) {
+    setMode(previousMode);
+  } else {
+    setMode('game');
+  }
 }
 
 // ✅ ✅ ADD THIS RIGHT HERE
@@ -1128,29 +1148,6 @@ if (p.rarity !== 'common') {
   `;
 }
 
-}
-
-function pickPerk(index){
-  const perk = activePerkChoices[index];
-  if (!perk) return;
-
-  // ✅ apply perk
-  perk.apply();
-
-  // ✅ resume XP flow properly
-  displayXP = 0;
-
-  if (pendingDisplayLevels > 0) {
-    xpBarState = 'fill'; // more levels queued
-  } else {
-    xpBarState = 'spill'; // continue leftover XP
-  }
-
-  // ✅ resume gameplay
-  isPaused = false;
-  running = true;
-
-  setMode('game');
 }
 
 /* =========================================================
@@ -1386,6 +1383,17 @@ function createReloadPower(){
 }
 
 function spawnStatPowerUp(){
+
+// ✅ HARD BLOCK: never spawn powerups in wrong debug modes
+if (
+  mode !== 'game' &&
+  mode !== 'debug_power' &&
+  mode !== 'debug_vel' &&
+  mode !== 'debug_cap' &&
+  mode !== 'debug_reload'
+) {
+  return;
+}
 
   // ✅ DEBUG CAP (max 4 on screen)
   if (
@@ -1799,9 +1807,10 @@ function setMode(nextMode){
   ui.perkRow.classList.add('hidden');
   ui.btnReroll.classList.add('hidden');
 
-  // restore title/subtitle by default
-  document.getElementById('title').classList.remove('hideInPerk');
-  document.getElementById('subtitle').classList.remove('hideInPerk');
+// ✅ NEVER show title/subtitle anymore
+document.getElementById('title').classList.add('hideInPerk');
+document.getElementById('subtitle').classList.add('hideInPerk');
+
 
   // ----- MODE ROUTES -----
   if (nextMode === 'menu') {
@@ -1881,7 +1890,7 @@ if (runMode === 'game') {
   ) {
     powerUpSpawnTimer = 10;
   }
-
+previousMode = runMode
   setMode(runMode);
 }
 
@@ -1917,15 +1926,17 @@ if (running && !isPaused) {
     updateAsteroids(dt);
   }
 
-  if (
-    mode === 'game' ||
-    mode === 'debug_power' ||
-    mode === 'debug_vel' ||
-    mode === 'debug_cap' ||
-    mode === 'debug_reload'
-  ) {
-    updatePowerUps(dt);
-  }
+// ✅ ONLY allow powerups in specific modes
+const allowPowerups =
+  mode === 'game' ||
+  mode === 'debug_power' ||
+  mode === 'debug_vel' ||
+  mode === 'debug_cap' ||
+  mode === 'debug_reload';
+
+if (allowPowerups && !isPaused) {
+  updatePowerUps(dt);
+}
 }
 
     draw();
@@ -1944,6 +1955,7 @@ if (running && !isPaused) {
 
 // ✅ start loop ONCE (delete any other requestAnimationFrame(update) lines elsewhere)
 requestAnimationFrame(update);
+setMode('menu'); // ✅ initialize UI correctly on load
 
 /* =========================================================
    ✅ UI WIRING
@@ -1951,7 +1963,13 @@ requestAnimationFrame(update);
 
 ui.btnResume.addEventListener('click', () => {
   isPaused = false;
-  setMode('game');
+
+  // ✅ return to the mode we were in before pausing
+  if (typeof previousMode === 'string' && previousMode.startsWith('debug_')) {
+    setMode(previousMode);
+  } else {
+    setMode('game');
+  }
 });
 
 ui.btnExit.addEventListener('click', () => {
