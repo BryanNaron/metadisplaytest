@@ -167,6 +167,7 @@
     <div class="pill">Bullet Velocity <strong id="bs">0</strong></div>
     <div class="pill">Capacity <strong id="bc">0</strong></div>
 <div class="pill">Luck <strong id="luck">0</strong></div>
+<div class="pill">Pickup Radius <strong id="pr">0</strong></div>
   </div>
 
 <span id="status" class="hidden"></span>
@@ -259,6 +260,7 @@ const ui = {
 
 
 luck: document.getElementById('luck'),
+pickupRadius: document.getElementById('pr'),
 
 hud: document.getElementById('hud'),
 
@@ -313,6 +315,8 @@ let flashPhase = 0;     // 0 = off, 1 = fade-in, 2 = fade-out
 let flashTriggered = false;
 let uiRevealed = false;
 let gameplayHiddenForPerk = false;
+let pickupRadiusBase = 60; // ✅ base magnet radius
+
 
 const FLASH_FADE_IN = 1.5;    // slower = smoother build
 const FLASH_FADE_OUT = 4;  // bigger = faster drop
@@ -1030,7 +1034,7 @@ let availablePerks = [
     }
   },
 
-  // ✅ LUCK - EPIC
+// ✅ LUCK - EPIC
   {
     id: 'luck_epic',
     name: 'Fortune Engine',
@@ -1039,7 +1043,51 @@ let availablePerks = [
     apply: () => {
       playerLuck += 0.5;
     }
+  },
+
+// ✅ PICKUP RADIUS - UNCOMMON
+{
+  id: 'pickup_uncommon',
+  name: 'Magnet Field',
+  desc: '+15 Pickup Radius',
+  rarity: 'uncommon',
+  apply: () => {
+    pickupRadiusBase += 15;
   }
+},
+
+// ✅ PICKUP RADIUS - RARE
+{
+  id: 'pickup_rare',
+  name: 'Magnet Field+',
+  desc: '+30 Pickup Radius',
+  rarity: 'rare',
+  apply: () => {
+    pickupRadiusBase += 30;
+  }
+},
+
+// ✅ PICKUP RADIUS - EPIC
+{
+  id: 'pickup_epic',
+  name: 'Attractor Core',
+  desc: '+45 Pickup Radius',
+  rarity: 'epic',
+  apply: () => {
+    pickupRadiusBase += 45;
+  }
+},
+
+// ✅ PICKUP RADIUS - LEGENDARY
+{
+  id: 'pickup_legendary',
+  name: 'Singularity Field',
+  desc: '+60 Pickup Radius',
+  rarity: 'legendary',
+  apply: () => {
+    pickupRadiusBase += 60;
+  }
+},
 
 ];
 
@@ -1550,6 +1598,145 @@ function grantPowerUp(p){
 awardXP(25); // suggested: powerups give less XP than score value, tune as desired
 }
 
+
+/* =========================================================
+   ✅ PICKUP SYSTEM (PLAYER TOUCH ONLY)
+========================================================= */
+
+let pickups = [];
+let pickupSpawnTimer = 0;
+let pickupBursts = [];
+let xpTexts = [];
+
+const PICKUP_RARITY = {
+  common:    { color: '#dddddd', xp: 15 },
+  uncommon:  { color: '#4cff4c', xp: 30 },
+  rare:      { color: '#66ccff', xp: 60 },
+  epic:      { color: '#b84cff', xp: 120 },
+  legendary: { color: '#ff9933', xp: 250 }
+};
+
+function createGem(rarity = 'common') {
+
+  const data = PICKUP_RARITY[rarity];
+
+  return {
+    type: 'gem',
+    rarity: rarity,
+    color: data.color,
+    value: data.xp,
+
+    x: getRandomLaneX(),
+    y: -20,
+
+    w: 16,
+    h: 16,
+
+    fall: randRange(0.25, 0.55),
+
+    pulse: Math.random() * Math.PI * 2,
+    glow: 0,
+    magnetized: false
+  };
+}
+
+function spawnPickup() {
+
+  if (Math.random() < 0.7) return;
+
+  // ✅ no common gems
+  let rarity;
+  do {
+    rarity = rollRarity();
+  } while (rarity === 'common');
+
+  pickups.push(createGem(rarity));
+}
+
+function updatePickups(dt) {
+
+  pickupSpawnTimer -= dt;
+
+  if (pickupSpawnTimer <= 0) {
+    spawnPickup();
+    pickupSpawnTimer = 1.5;
+  }
+
+  pickups.forEach(p => {
+
+    p.pulse += dt * 6;
+
+    const dx = playerX - p.x;
+    const dy = playerY - p.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    const MAGNET_RADIUS = pickupRadiusBase;
+
+    if (dist < MAGNET_RADIUS) {
+      p.magnetized = true;
+    }
+
+    if (p.magnetized) {
+      const pull = 0.05 + p.glow * 0.1;
+      p.x += dx * pull;
+      p.y += dy * pull;
+
+      p.glow = Math.min(1, p.glow + dt * 4);
+    } else {
+      p.y += p.fall * dt * 60;
+      p.glow = Math.max(0, p.glow - dt * 2);
+    }
+  });
+
+  pickups = pickups.filter(p => p.y < 640);
+
+  handlePlayerPickupCollision();
+}
+
+function handlePlayerPickupCollision() {
+
+  for (let i = pickups.length - 1; i >= 0; i--) {
+    const p = pickups[i];
+
+    const hit =
+      Math.abs(p.x - playerX) < 12 &&
+      Math.abs(p.y - playerY) < 12;
+
+    if (hit) {
+      awardXP(p.value);
+      spawnPickupBurst(p.x, p.y, p.color);
+      spawnXPText(p.x, p.y, p.value, p.color);
+      pickups.splice(i, 1);
+    }
+  }
+}
+
+function spawnPickupBurst(x, y, color) {
+
+  for (let i = 0; i < 6; i++) {
+    pickupBursts.push({
+      x,
+      y,
+      vx: randRange(-2, 2),
+      vy: randRange(-2, 2),
+      life: 0.4,
+      color
+    });
+  }
+}
+
+function spawnXPText(x, y, value, color) {
+
+  xpTexts.push({
+    x,
+    y,
+    value,
+    color,
+    life: 1.0,
+    vy: -0.6,
+    drift: randRange(-0.3, 0.3)
+  });
+}
 /* =========================================================
    ✅ RENDER SYSTEM (WITH ONSCREEN ERROR DISPLAY)
 ========================================================= */
@@ -1808,6 +1995,73 @@ if (!hideGameplay) {
     if (!e.alive) return;
     ctx.fillRect(e.x - e.w/2, e.y - e.h/2, e.w, e.h);
   });
+
+// -------- PICKUPS (GEMS) --------
+pickups.forEach(p => {
+
+  ctx.save();
+
+  // ✅ pulse scale
+  const scale = 1 + Math.sin(p.pulse) * 0.12;
+
+  // ✅ glow intensity
+  const glowSize = 8 + p.glow * 12;
+
+  ctx.translate(p.x, p.y);
+  ctx.scale(scale, scale);
+
+  // ✅ outer glow
+  ctx.globalAlpha = 0.25 + p.glow * 0.4;
+  ctx.fillStyle = p.color;
+
+  ctx.beginPath();
+  ctx.arc(0, 0, glowSize, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ✅ main gem
+  ctx.globalAlpha = 1;
+
+  ctx.beginPath();
+  ctx.moveTo(0, -p.h/2);
+  ctx.lineTo(p.w/2, 0);
+  ctx.lineTo(0, p.h/2);
+  ctx.lineTo(-p.w/2, 0);
+  ctx.closePath();
+  ctx.fillStyle = p.color;
+  ctx.fill();
+
+  ctx.restore();
+});
+
+// -------- PICKUP BURSTS --------
+pickupBursts.forEach(b => {
+
+  ctx.save();
+
+  ctx.globalAlpha = b.life * 2;
+  ctx.fillStyle = b.color;
+
+  ctx.fillRect(b.x, b.y, 3, 3);
+
+  ctx.restore();
+});
+
+// -------- FLOATING XP TEXT --------
+xpTexts.forEach(t => {
+
+  ctx.save();
+
+  ctx.globalAlpha = Math.max(0, t.life);
+  ctx.fillStyle = t.color;
+
+  ctx.font = 'bold 16px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.fillText("+" + t.value, t.x, t.y);
+
+  ctx.restore();
+});
 
   // -------- AIM DETECTION --------
   const aimWindowPx = 14;
@@ -2187,7 +2441,28 @@ gameplayHiddenForPerk = true;
     }
 
     if (running && !isPaused) {
+updatePickups(dt);
       updateWeapons(dt);
+
+// ✅ UPDATE PICKUP BURSTS
+pickupBursts.forEach(b => {
+  b.x += b.vx * dt * 60;
+  b.y += b.vy * dt * 60;
+  b.life -= dt;
+});
+
+// ✅ UPDATE XP FLOAT TEXT
+xpTexts.forEach(t => {
+
+  t.y += t.vy * dt * 60;
+  t.x += t.drift * dt * 60;
+
+  t.life -= dt;
+});
+
+xpTexts = xpTexts.filter(t => t.life > 0);
+
+pickupBursts = pickupBursts.filter(b => b.life > 0);
 
       if (mode === 'game' || mode === 'debug_enemy') {
         updateEnemies();
@@ -2197,6 +2472,8 @@ gameplayHiddenForPerk = true;
       if (mode === 'game' || mode === 'debug_asteroid') {
         updateAsteroids(dt);
       }
+
+updatePickups(dt);
 
       const allowPowerups =
         mode === 'game' ||
@@ -2219,6 +2496,9 @@ gameplayHiddenForPerk = true;
   ui.bc.textContent = getMagSize();
   ui.rt.textContent = (getReloadTime() / 60).toFixed(1);
   ui.luck.textContent = (1 + playerLuck).toFixed(2);
+// ✅ pickup radius (must match your magnet logic)
+const pickupRadius = pickupRadiusBase;
+ui.pickupRadius.textContent = pickupRadius;
 }
 renderTopUI();
     draw();
