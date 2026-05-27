@@ -76,7 +76,10 @@
       white-space: nowrap;
     }
 
-    .pill strong { color: var(--cyan); font-weight: 900; }
+.pill strong {
+  color: #ffffff;
+  font-weight: 900;
+}
 
     #panel {
       position:absolute;
@@ -161,7 +164,7 @@
   width: 100%;          /* ✅ ensures full stretch */
 ">
     <div class="pill">Score <strong id="score">0</strong></div>
-    <div class="pill">FireRate <strong id="fd">0</strong></div>
+    <div class="pill">Fire Rate <strong id="fd">0</strong></div>
     <div class="pill">Reload <strong id="rt">0</strong></div>
 
     <div class="pill">Bullet Velocity <strong id="bs">0</strong></div>
@@ -316,6 +319,9 @@ let flashTriggered = false;
 let uiRevealed = false;
 let gameplayHiddenForPerk = false;
 let pickupRadiusBase = 60; // ✅ base magnet radius
+let previewingPerk = null; // ✅ ADD THIS
+
+let enemyRows = [];
 
 
 const FLASH_FADE_IN = 1.5;    // slower = smoother build
@@ -348,10 +354,195 @@ function ensureFocus(){
 function moveFocus(step){
   const list = visibleFocusables();
   if (!list.length) return;
+
   const idx = list.indexOf(document.activeElement);
   const next = idx === -1 ? 0 : (idx + step + list.length) % list.length;
+
   list[next].focus();
 }
+
+// =====================================================
+// ✅ STAT HIGHLIGHT + PERK PREVIEW SYSTEM
+// =====================================================
+function getRarityColor(rarity) {
+  if (rarity === 'uncommon') return '#4cff4c';
+  if (rarity === 'rare') return '#66ccff';
+  if (rarity === 'epic') return '#b84cff';
+  if (rarity === 'legendary') return '#ff9933';
+  return '#dddddd';
+}
+
+function getPerkDelta(perk) {
+  if (!perk || !perk.id) return 0;
+
+  // fire rate
+  if (perk.id === 'firerate_common') return 6;
+  if (perk.id === 'firerate_uncommon') return 10;
+  if (perk.id === 'firerate_rare') return 16;
+  if (perk.id === 'firerate_epic') return 22;
+  if (perk.id === 'firerate_legendary') return 30;
+
+// bullet velocity
+if (perk.id === 'bulletvel_common') return 0.5;
+if (perk.id === 'bulletvel_uncommon') return 1.0;
+if (perk.id === 'bulletvel_rare') return 1.5;
+if (perk.id === 'bulletvel_epic') return 2.0;
+if (perk.id === 'bulletvel_legendary') return 3.0;
+
+  // capacity
+  if (perk.id === 'capacity_common') return 1;
+  if (perk.id === 'capacity_uncommon') return 2;
+  if (perk.id === 'capacity_rare') return 3;
+  if (perk.id === 'capacity_epic') return 4;
+  if (perk.id === 'capacity_legendary') return 5;
+
+  // reload
+  if (perk.id === 'reload_common') return 20;
+  if (perk.id === 'reload_uncommon') return 35;
+  if (perk.id === 'reload_rare') return 55;
+  if (perk.id === 'reload_epic') return 80;
+  if (perk.id === 'reload_legendary') return 110;
+
+  // luck
+  if (perk.id === 'luck_rare') return 0.2;
+  if (perk.id === 'luck_epic') return 0.5;
+
+  // pickup radius
+  if (perk.id === 'pickup_uncommon') return 15;
+  if (perk.id === 'pickup_rare') return 30;
+  if (perk.id === 'pickup_epic') return 45;
+  if (perk.id === 'pickup_legendary') return 60;
+
+  return 0;
+}
+
+function refreshStatUI() {
+if (previewingPerk) return; // ✅ DO NOT overwrite preview
+const delay = getFireDelay();
+const rps = getFireRateRPS(delay);
+
+ui.fd.textContent = rps.toFixed(2) + 'rps';
+  const vel = getBulletSpeed() * 60;
+ui.bs.textContent = Math.round(vel) + 'm/s';
+  ui.bc.textContent = getMagSize();
+  ui.rt.textContent = (getReloadTime() / 60).toFixed(1) + 's';
+  ui.luck.textContent = (1 + playerLuck).toFixed(2);
+  ui.pickupRadius.textContent = pickupRadiusBase + 'm';
+}
+
+function clearStatHighlights() {
+previewingPerk = null; // ✅ clear preview
+
+  document.querySelectorAll('.pill').forEach(pill => {
+    pill.style.boxShadow = '';
+  });
+
+  // ✅ restore normal stat text
+  refreshStatUI();
+}
+
+function highlightPerkPreview(perk) {
+  clearStatHighlights();
+  previewingPerk = perk; // ✅ lock preview AFTER clear
+
+  if (!perk || !perk.stat) return;
+
+  const rarityColor = getRarityColor(perk.rarity);
+  const delta = getPerkDelta(perk);
+
+  let target = null;
+  let currentDisplay = '';
+  let totalDisplay = '';
+
+  // ✅ FIRE RATE
+  if (perk.stat === 'fireRate') {
+    target = ui.fd;
+
+const currentDelay = getFireDelay();
+const currentRps = getFireRateRPS(currentDelay);
+
+const previewDelay = Math.max(6, currentDelay - delta);
+const previewRps = getFireRateRPS(previewDelay);
+
+currentDisplay = currentRps.toFixed(2) + 'rps';
+totalDisplay = previewRps.toFixed(2) + 'rps';
+  }
+
+  // ✅ CAPACITY
+  if (perk.stat === 'capacity') {
+    target = ui.bc;
+
+    const currentCap = getMagSize();
+    const previewCap = currentCap + delta;
+
+    currentDisplay = currentCap;
+    totalDisplay = previewCap;
+  }
+
+  // ✅ RELOAD
+  if (perk.stat === 'reload') {
+    target = ui.rt;
+
+    const currentReloadFrames = getReloadTime();
+    const currentReloadSec = (currentReloadFrames / 60).toFixed(1);
+
+    const previewReloadFrames = Math.max(10, currentReloadFrames - delta);
+    const previewReloadSec = (previewReloadFrames / 60).toFixed(1);
+
+currentDisplay = currentReloadSec + 's';
+totalDisplay = previewReloadSec + 's';
+  }
+
+  // ✅ BULLET VELOCITY (future-safe)
+  if (perk.stat === 'bulletVel') {
+    target = ui.bs;
+
+    const currentVel = getBulletSpeed();
+    const previewVel = currentVel + delta;
+
+currentDisplay = Math.round(currentVel * 60) + 'm/s';
+totalDisplay = Math.round(previewVel * 60) + 'm/s';
+  }
+
+  // ✅ LUCK
+  if (perk.stat === 'luck') {
+    target = ui.luck;
+
+    const currentLuck = (1 + playerLuck).toFixed(2);
+    const previewLuck = (1 + playerLuck + delta).toFixed(2);
+
+    currentDisplay = currentLuck;
+    totalDisplay = previewLuck;
+  }
+
+  // ✅ PICKUP RADIUS
+  if (perk.stat === 'pickup') {
+    target = ui.pickupRadius;
+
+    const currentRadius = pickupRadiusBase;
+    const previewRadius = pickupRadiusBase + delta;
+
+currentDisplay = currentRadius + 'm';
+totalDisplay = previewRadius + 'm';
+  }
+
+  if (!target) return;
+
+  const pill = target.closest('.pill');
+  if (pill) {
+    pill.style.boxShadow =
+      '0 0 10px rgba(255,255,255,0.8), 0 0 20px rgba(0,212,255,0.6)';
+  }
+
+  target.innerHTML = `${currentDisplay} | <span style="color:${rarityColor};">${totalDisplay}</span>`;
+}
+
+// ✅ clear highlight when leaving perk UI
+document.addEventListener('focusin', (e) => {
+  if (!e.target.classList.contains('focusable')) {
+    clearStatHighlights();
+  }
+});
 
 // =========================================================
 // ✅ INPUT (GRID LANES ONLY — NO DASH)
@@ -678,7 +869,7 @@ let weapon = {
   baseFireDelay: 95,
   baseBulletSpeed: 4.5,
   baseMagSize: 6,
-  baseReloadTime: 180, // still stored in frames (we convert later)
+  baseReloadTime: 210, // still stored in frames (we convert later)
 
   bonusFireDelay: 0,
   bonusBulletSpeed: 0,
@@ -713,6 +904,30 @@ function getReloadTime(){
   return Math.max(10, Math.round(
     weapon.baseReloadTime - weapon.bonusReloadTime
   ));
+}
+
+function getFireRateRPS(delay) {
+  return 60 / delay;
+}
+
+function getFireRateDelta(delayReduction) {
+  const currentDelay = getFireDelay();
+
+  const currentRPS = getFireRateRPS(currentDelay);
+  const newDelay = Math.max(6, currentDelay - delayReduction);
+  const newRPS = getFireRateRPS(newDelay);
+
+  return (newRPS - currentRPS).toFixed(2);
+}
+
+function getReloadDelta(framesReduction) {
+  const current = getReloadTime();
+  const newTime = Math.max(10, current - framesReduction);
+
+  const currentSec = current / 60;
+  const newSec = newTime / 60;
+
+  return (currentSec - newSec).toFixed(1);
 }
 
 // ✅ START RELOAD (convert once to seconds)
@@ -972,8 +1187,9 @@ let availablePerks = [
 {
   id: 'firerate_common',
   name: 'Rapid Trigger',
-  desc: '+6 Fire Rate',
+  desc: () => `+${getFireRateDelta(6)} Fire Rate`,
   rarity: 'common',
+stat: 'fireRate',
   apply: () => {
     weapon.bonusFireDelay += 6;
   }
@@ -983,8 +1199,9 @@ let availablePerks = [
 {
   id: 'firerate_uncommon',
   name: 'Rapid Trigger+',
-  desc: '+10 Fire Rate',
+desc: () => `+${getFireRateDelta(10)} Fire Rate`,
   rarity: 'uncommon',
+stat: 'fireRate',
   apply: () => {
     weapon.bonusFireDelay += 10;
   }
@@ -994,8 +1211,9 @@ let availablePerks = [
 {
   id: 'firerate_rare',
   name: 'Hyper Trigger',
-  desc: '+16 Fire Rate',
+desc: () => `+${getFireRateDelta(16)} Fire Rate`,
   rarity: 'rare',
+stat: 'fireRate',
   apply: () => {
     weapon.bonusFireDelay += 16;
   }
@@ -1005,8 +1223,9 @@ let availablePerks = [
 {
   id: 'firerate_epic',
   name: 'Overdrive Trigger',
-  desc: '+22 Fire Rate',
+desc: () => `+${getFireRateDelta(22)} Fire Rate`,
   rarity: 'epic',
+stat: 'fireRate',
   apply: () => {
     weapon.bonusFireDelay += 22;
   }
@@ -1016,8 +1235,9 @@ let availablePerks = [
 {
   id: 'firerate_legendary',
   name: 'God Trigger',
-  desc: '+30 Fire Rate',
+desc: () => `+${getFireRateDelta(30)} Fire Rate`,
   rarity: 'legendary',
+stat: 'fireRate',
   apply: () => {
     weapon.bonusFireDelay += 30;
   }
@@ -1029,6 +1249,7 @@ let availablePerks = [
     name: 'Lucky Core',
     desc: '+0.2 Luck',
     rarity: 'rare',
+stat: 'luck',
     apply: () => {
       playerLuck += 0.2;
     }
@@ -1040,6 +1261,7 @@ let availablePerks = [
     name: 'Fortune Engine',
     desc: '+0.5 Luck',
     rarity: 'epic',
+stat: 'luck',
     apply: () => {
       playerLuck += 0.5;
     }
@@ -1051,6 +1273,7 @@ let availablePerks = [
   name: 'Magnet Field',
   desc: '+15 Pickup Radius',
   rarity: 'uncommon',
+stat: 'pickup',
   apply: () => {
     pickupRadiusBase += 15;
   }
@@ -1062,6 +1285,7 @@ let availablePerks = [
   name: 'Magnet Field+',
   desc: '+30 Pickup Radius',
   rarity: 'rare',
+stat: 'pickup',
   apply: () => {
     pickupRadiusBase += 30;
   }
@@ -1073,6 +1297,7 @@ let availablePerks = [
   name: 'Attractor Core',
   desc: '+45 Pickup Radius',
   rarity: 'epic',
+stat: 'pickup',
   apply: () => {
     pickupRadiusBase += 45;
   }
@@ -1084,8 +1309,189 @@ let availablePerks = [
   name: 'Singularity Field',
   desc: '+60 Pickup Radius',
   rarity: 'legendary',
+stat: 'pickup',
   apply: () => {
     pickupRadiusBase += 60;
+  }
+},
+
+// ✅ CAPACITY - COMMON
+{
+  id: 'capacity_common',
+  name: 'Extended Mag',
+  desc: '+1 Capacity',
+  rarity: 'common',
+stat: 'capacity',
+  apply: () => {
+    weapon.bonusMagSize += 1;
+  }
+},
+
+// ✅ CAPACITY - UNCOMMON
+{
+  id: 'capacity_uncommon',
+  name: 'Extended Mag+',
+  desc: '+2 Capacity',
+  rarity: 'uncommon',
+stat: 'capacity',
+  apply: () => {
+    weapon.bonusMagSize += 2;
+  }
+},
+
+// ✅ CAPACITY - RARE
+{
+  id: 'capacity_rare',
+  name: 'High Capacity Mag',
+  desc: '+3 Capacity',
+  rarity: 'rare',
+stat: 'capacity',
+  apply: () => {
+    weapon.bonusMagSize += 3;
+  }
+},
+
+// ✅ CAPACITY - EPIC
+{
+  id: 'capacity_epic',
+  name: 'Overflow Mag',
+  desc: '+4 Capacity',
+  rarity: 'epic',
+stat: 'capacity',
+  apply: () => {
+    weapon.bonusMagSize += 4;
+  }
+},
+
+// ✅ CAPACITY - LEGENDARY
+{
+  id: 'capacity_legendary',
+  name: 'Endless Magazinex',
+  desc: '+5 Capacity',
+  rarity: 'legendary',
+stat: 'capacity',
+  apply: () => {
+    weapon.bonusMagSize += 5;
+  }
+},
+
+// ✅ RELOAD - COMMON
+{
+  id: 'reload_common',
+  name: 'Quick Reload',
+desc: () => `-${getReloadDelta(20)}s Reload`,
+  rarity: 'common',
+stat: 'reload',
+  apply: () => {
+    weapon.bonusReloadTime += 20;
+  }
+},
+
+// ✅ RELOAD - UNCOMMON
+{
+  id: 'reload_uncommon',
+  name: 'Quick Reload+',
+desc: () => `-${getReloadDelta(35)}s Reload`,
+  rarity: 'uncommon',
+stat: 'reload',
+  apply: () => {
+    weapon.bonusReloadTime += 35;
+  }
+},
+
+// ✅ RELOAD - RARE
+{
+  id: 'reload_rare',
+  name: 'Rapid Reload',
+desc: () => `-${getReloadDelta(55)}s Reload`,
+  rarity: 'rare',
+stat: 'reload',
+  apply: () => {
+    weapon.bonusReloadTime += 55;
+  }
+},
+
+// ✅ RELOAD - EPIC
+{
+  id: 'reload_epic',
+  name: 'Rapid Reload+',
+desc: () => `-${getReloadDelta(80)}s Reload`,
+  rarity: 'epic',
+stat: 'reload',
+  apply: () => {
+    weapon.bonusReloadTime += 80;
+  }
+},
+
+// ✅ RELOAD - LEGENDARY
+{
+  id: 'reload_legendary',
+  name: 'Instant Feed System',
+desc: () => `-${getReloadDelta(110)}s Reload`,
+  rarity: 'legendary',
+stat: 'reload',
+  apply: () => {
+    weapon.bonusReloadTime += 110;
+  }
+},
+
+// ✅ BULLET VELOCITY - COMMON
+{
+  id: 'bulletvel_common',
+  name: 'Faster Rounds',
+  desc: '+30 m/s Shot Speed',
+  rarity: 'common',
+  stat: 'bulletVel',
+  apply: () => {
+    weapon.bonusBulletSpeed += 0.5;
+  }
+},
+
+// ✅ BULLET VELOCITY - UNCOMMON
+{
+  id: 'bulletvel_uncommon',
+  name: 'Faster Rounds+',
+  desc: '+60 m/s Shot Speed',
+  rarity: 'uncommon',
+  stat: 'bulletVel',
+  apply: () => {
+    weapon.bonusBulletSpeed += 1.0;
+  }
+},
+
+// ✅ BULLET VELOCITY - RARE
+{
+  id: 'bulletvel_rare',
+  name: 'High Velocity Rounds',
+  desc: '+90 m/s Shot Speed',
+  rarity: 'rare',
+  stat: 'bulletVel',
+  apply: () => {
+    weapon.bonusBulletSpeed += 1.5;
+  }
+},
+
+// ✅ BULLET VELOCITY - EPIC
+{
+  id: 'bulletvel_epic',
+  name: 'Hyper Velocity Rounds',
+  desc: '+120 m/s Shot Speed',
+  rarity: 'epic',
+  stat: 'bulletVel',
+  apply: () => {
+    weapon.bonusBulletSpeed += 2.0;
+  }
+},
+
+// ✅ BULLET VELOCITY - LEGENDARY
+{
+  id: 'bulletvel_legendary',
+  name: 'Rail Rounds',
+  desc: '+180 m/s Shot Speed',
+  rarity: 'legendary',
+  stat: 'bulletVel',
+  apply: () => {
+    weapon.bonusBulletSpeed += 3.0;
   }
 },
 
@@ -1182,6 +1588,7 @@ function generatePerkChoices(count = 3){
 }
 
 function pickPerk(index){
+clearStatHighlights();
   const perk = activePerkChoices[index];
   if (!perk) return;
 
@@ -1242,10 +1649,15 @@ if (p.rarity !== 'common') {
   slots[i].innerHTML = `
     <div style="text-align:center;">
       <div>${p.name}</div>
-      <div style="font-size:14px; opacity:0.7;">${p.desc}</div>
+      <div style="font-size:14px; opacity:0.7;">${typeof p.desc === 'function' ? p.desc() : p.desc}</div>
       <div style="font-size:12px; color:${color};">${p.rarity.toUpperCase()}</div>
     </div>
   `;
+// ✅ highlight stat + show preview on focus
+slots[i].onfocus = () => {
+  highlightPerkPreview(p);
+};
+
 }
 
 }
@@ -1258,16 +1670,141 @@ let enemies = [];
 
 function spawnEnemies(){
   enemies = [];
-  for (let i = 0; i < 6; i++) {
-    enemies.push({ x: 100 + i * 70, y: 90, w: 24, h: 16, alive: true });
+  enemyRows = [];
+
+  const ROW_COUNT = 3;
+  const ROW_SPACING = 70;
+
+  for (let row = 0; row < ROW_COUNT; row++) {
+
+    const direction = (row % 2 === 0) ? 1 : -1;
+
+    // ✅ shared row timing/state
+    const rowState = {
+      direction: direction,       // which way this row moves first
+      state: 'idle',              // idle -> telegraph -> move -> idle
+      idleTimer: 0,
+      idleTime: 0.6 + row * 0.1,  // slight wave timing per row
+      telegraphTimer: 0,
+      shiftDir: direction
+    };
+
+    enemyRows.push(rowState);
+
+    // ✅ spawn enemies in alternating lanes
+    for (let i = 0; i < GRID_COLS; i += 2) {
+      const lane = i;
+
+      enemies.push({
+        lane: lane,
+        targetLane: lane,
+
+        homeLane: lane,
+        swingRange: 1, // only move 1 lane away from home
+
+        x: GRID_LANES[lane],
+        targetX: GRID_LANES[lane],
+
+        y: 80 + row * ROW_SPACING,
+
+        w: 24,
+        h: 16,
+        alive: true,
+
+        row: row, // ✅ linked to shared row
+
+        telegraphTimer: 0,
+        willShift: false,
+        shiftDir: 0
+      });
+    }
   }
 }
 
-function updateEnemies(){
+function updateEnemies(dt){
+
+  // =====================================
+  // ✅ UPDATE SHARED ROW STATES
+  // =====================================
+  enemyRows.forEach(r => {
+
+    if (r.state === 'idle') {
+      r.idleTimer += dt;
+
+      if (r.idleTimer >= r.idleTime) {
+        r.state = 'telegraph';
+        r.telegraphTimer = 0.25;
+        r.shiftDir = r.direction;
+        r.idleTimer = 0;
+      }
+    }
+
+    else if (r.state === 'telegraph') {
+      r.telegraphTimer -= dt;
+
+      if (r.telegraphTimer <= 0) {
+        r.state = 'move';
+      }
+    }
+
+    else if (r.state === 'move') {
+      // ✅ after one move, reverse direction for next cycle
+      r.direction *= -1;
+      r.state = 'idle';
+    }
+  });
+
+  // =====================================
+  // ✅ APPLY ROW STATE TO EACH ENEMY
+  // =====================================
   enemies.forEach(e => {
     if (!e.alive) return;
-    e.y += 0.35;
-    if (e.y > 610) e.y = 90;
+
+    const r = enemyRows[e.row];
+
+    // ✅ fall downward
+    e.y += 0.35 * dt * 60;
+
+    // ✅ telegraph phase
+    if (r.state === 'telegraph') {
+      e.telegraphTimer = r.telegraphTimer;
+      e.shiftDir = r.shiftDir;
+      e.willShift = true;
+    }
+
+    // ✅ apply lane move once after telegraph finishes
+    else if (r.state === 'idle' && e.willShift) {
+
+      const minLane = e.homeLane - e.swingRange;
+      const maxLane = e.homeLane + e.swingRange;
+
+      let newLane = e.targetLane + e.shiftDir;
+
+      // ✅ keep motion bounded around home lane
+      if (newLane < minLane || newLane > maxLane) {
+        newLane = e.targetLane;
+      } else {
+        e.targetLane = newLane;
+        e.targetX = GRID_LANES[newLane];
+      }
+
+      e.willShift = false;
+    }
+
+    // ✅ smooth movement toward target lane
+    e.x += (e.targetX - e.x) * Math.min(1, 12 * dt);
+
+    // ✅ reset if offscreen
+    if (e.y > 610) {
+      e.y = 80 + e.row * 70;
+      e.lane = e.homeLane;
+      e.targetLane = e.homeLane;
+      e.x = GRID_LANES[e.homeLane];
+      e.targetX = e.x;
+      e.telegraphTimer = 0;
+      e.willShift = false;
+      e.shiftDir = 0;
+    }
   });
 }
 
@@ -1990,11 +2527,66 @@ if (!hideGameplay) {
   });
 
   // ENEMIES
-  ctx.fillStyle = '#ff3355';
-  enemies.forEach(e => {
-    if (!e.alive) return;
-    ctx.fillRect(e.x - e.w/2, e.y - e.h/2, e.w, e.h);
-  });
+enemies.forEach(e => {
+  if (!e.alive) return;
+
+  ctx.save();
+
+  const dx = e.targetX - e.x;
+
+  // ✅ position
+  ctx.translate(e.x, e.y);
+
+  // ✅ tilt
+  ctx.rotate(dx * 0.01);
+
+  // ✅ TELEGRAPH SCALE
+  if (e.telegraphTimer > 0) {
+    const pulse = 1 + Math.sin(performance.now() * 0.02) * 0.2;
+    ctx.scale(pulse, pulse);
+    ctx.fillStyle = '#ff8888';
+  } else {
+    ctx.fillStyle = '#ff3355';
+  }
+
+  // ✅ DRAW ENEMY BODY
+  ctx.fillRect(-e.w/2, -e.h/2, e.w, e.h);
+
+  // ✅ ✅ ✅ DRAW DIRECTION ARROW
+  if (e.telegraphTimer > 0 && e.willShift) {
+
+    ctx.save();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.globalAlpha = 0.9;
+
+    const offsetY = -18; // above enemy
+
+    // 👉 LEFT ARROW
+    if (e.shiftDir === -1) {
+      ctx.beginPath();
+      ctx.moveTo(-6, offsetY);
+      ctx.lineTo(6, offsetY - 6);
+      ctx.lineTo(6, offsetY + 6);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // 👉 RIGHT ARROW
+    else if (e.shiftDir === 1) {
+      ctx.beginPath();
+      ctx.moveTo(6, offsetY);
+      ctx.lineTo(-6, offsetY - 6);
+      ctx.lineTo(-6, offsetY + 6);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  ctx.restore();
+});
 
 // -------- PICKUPS (GEMS) --------
 pickups.forEach(p => {
@@ -2058,7 +2650,7 @@ xpTexts.forEach(t => {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  ctx.fillText("+" + t.value, t.x, t.y);
+  ctx.fillText("+" + t.value + "XP", t.x, t.y);
 
   ctx.restore();
 });
@@ -2204,6 +2796,7 @@ asteroidSpawnTimer = 0;
 
 
 function setMode(nextMode){
+clearStatHighlights();
   mode = nextMode;
 // ✅ reset gameplay visibility when leaving perk mode
 if (nextMode !== 'perk_select') {
@@ -2352,7 +2945,7 @@ function update(now){
     // clear any previous error once we successfully tick
     lastRuntimeError = "";
 
-    // movement always ticks
+    // ✅ movement always ticks
     updateMovement(dt);
 
     // ✅ perk timeline progress
@@ -2361,13 +2954,16 @@ function update(now){
     }
 
     updateStars(dt);
+    updateXPBar(dt);
 
-    // ✅ perk cinematic phases
+    // =====================================
+    // ✅ PERK CINEMATIC
+    // =====================================
     if (mode === 'perk_select') {
 
       // --- Phase 1: slow warp-in
       if (perkTimeline < 0.25) {
-        perkWarpRamp = perkTimeline / 0.4; // 0 → ~0.625 over first 0.25s
+        perkWarpRamp = perkTimeline / 0.4;
         perkEnterBoost = 0;
       }
 
@@ -2385,122 +2981,105 @@ function update(now){
       }
 
       // ✅ Start flash once warp phase has had time to happen
-if (perkTimeline > 0.65 && !flashTriggered) {
-  flashTriggered = true;
+      if (perkTimeline > 0.65 && !flashTriggered) {
+        flashTriggered = true;
+        flashValue = 0;
+        flashPhase = 1;
+      }
 
-  flashValue = 0;
-  flashPhase = 1;
+      if (!uiRevealed && flashValue >= FLASH_MAX) {
+        uiRevealed = true;
+        gameplayHiddenForPerk = true;
 
-}
+        ui.panel.classList.remove('hidden');
+        ui.perkRow.classList.remove('hidden');
+        ui.btnReroll.classList.remove('hidden');
+        ui.hud.classList.remove('hidden');
 
-if (!uiRevealed && flashValue >= FLASH_MAX) {
-
-
-  uiRevealed = true; // ✅ lock so it only happens once
-gameplayHiddenForPerk = true;
-
-  // ✅ now show the whole panel
-  ui.panel.classList.remove('hidden');
-
-  // ✅ show perk UI
-  ui.perkRow.classList.remove('hidden');
-  ui.btnReroll.classList.remove('hidden');
-  ui.hud.classList.remove('hidden');
-
-  renderPerkUI();
-  ui.perk2.focus();
-  setTimeout(ensureFocus, 0);
-}
+        renderPerkUI();
+        ui.perk2.focus();
+        setTimeout(ensureFocus, 0);
+      }
     }
 
-    updateXPBar(dt);
-
+    // =====================================
     // ✅ FLASH UPDATE SYSTEM
+    // =====================================
     if (flashPhase === 1) {
-      // FADE IN
       flashValue += dt * FLASH_FADE_IN;
 
       if (flashValue >= FLASH_MAX) {
         flashValue = FLASH_MAX;
-        flashPhase = 2; // switch to fade-out
+        flashPhase = 2;
       }
 
     } else if (flashPhase === 2) {
-      // FADE OUT
       flashValue -= dt * FLASH_FADE_OUT;
 
       if (flashValue <= 0) {
         flashValue = 0;
-        flashPhase = 0; // done
+        flashPhase = 0;
       }
     }
 
-    // ✅ APPLY TO HTML OVERLAY
     if (ui.flash) {
       ui.flash.style.opacity = flashValue;
     }
 
+// =====================================
+    // ✅ GAMEPLAY UPDATES (MODE GATED)
+    // =====================================
     if (running && !isPaused) {
-updatePickups(dt);
+
       updateWeapons(dt);
 
-// ✅ UPDATE PICKUP BURSTS
-pickupBursts.forEach(b => {
-  b.x += b.vx * dt * 60;
-  b.y += b.vy * dt * 60;
-  b.life -= dt;
-});
-
-// ✅ UPDATE XP FLOAT TEXT
-xpTexts.forEach(t => {
-
-  t.y += t.vy * dt * 60;
-  t.x += t.drift * dt * 60;
-
-  t.life -= dt;
-});
-
-xpTexts = xpTexts.filter(t => t.life > 0);
-
-pickupBursts = pickupBursts.filter(b => b.life > 0);
-
+      // ✅ ENEMIES ONLY
       if (mode === 'game' || mode === 'debug_enemy') {
-        updateEnemies();
+        updateEnemies(dt);
         handleBulletsVsEnemies();
       }
 
+      // ✅ ASTEROIDS ONLY
       if (mode === 'game' || mode === 'debug_asteroid') {
         updateAsteroids(dt);
       }
 
-updatePickups(dt);
-
-      const allowPowerups =
+      // ✅ POWERUPS ONLY
+      if (
         mode === 'game' ||
         mode === 'debug_power' ||
         mode === 'debug_vel' ||
         mode === 'debug_cap' ||
-        mode === 'debug_reload';
-
-      if (allowPowerups && !isPaused) {
+        mode === 'debug_reload'
+      ) {
         updatePowerUps(dt);
       }
-    }
-// ✅ UPDATE UI STATS (RUNS EVEN DURING PERK SCREEN)
-{
-  const delay = getFireDelay();
-  const rps = 60 / delay;
 
-  ui.fd.textContent = Math.round(rps * 100);
-  ui.bs.textContent = getBulletSpeed().toFixed(1);
-  ui.bc.textContent = getMagSize();
-  ui.rt.textContent = (getReloadTime() / 60).toFixed(1);
-  ui.luck.textContent = (1 + playerLuck).toFixed(2);
-// ✅ pickup radius (must match your magnet logic)
-const pickupRadius = pickupRadiusBase;
-ui.pickupRadius.textContent = pickupRadius;
-}
-renderTopUI();
+      // ✅ PICKUPS ONLY IN FULL GAME
+      if (mode === 'game') {
+        updatePickups(dt);
+      }
+
+      // ✅ PICKUP BURSTS
+      pickupBursts.forEach(b => {
+        b.x += b.vx * dt * 60;
+        b.y += b.vy * dt * 60;
+        b.life -= dt;
+      });
+      pickupBursts = pickupBursts.filter(b => b.life > 0);
+
+      // ✅ XP FLOAT TEXT
+      xpTexts.forEach(t => {
+        t.y += t.vy * dt * 60;
+        t.x += t.drift * dt * 60;
+        t.life -= dt;
+      });
+      xpTexts = xpTexts.filter(t => t.life > 0);
+    }
+
+    // ✅ UI + DRAW
+    refreshStatUI();
+    renderTopUI();
     draw();
 
   } catch (err) {
