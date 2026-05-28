@@ -345,6 +345,8 @@ let previewingPerk = null; // ✅ ADD THIS
 let enemyRows = [];
 let missileDrones = [];
 let enemyMissiles = [];
+let pawns = [];
+
 
 // =====================================================
 // ✅ ACTIVE LEVEL STATE
@@ -354,6 +356,7 @@ let activeLevelKey = null;
 let activeLevelDef = null;
 
 let levelTimer = 0;
+let levelElapsed = 0;   // ✅ time since current level started
 let levelObjectiveComplete = false;
 
 
@@ -990,7 +993,7 @@ let reloadTimer = 0;
 const GLOBAL_PERK_MULT = 1.0;
 
 const PERK_STAT_MULT = {
-  fireRate: 5.0,
+  fireRate: 2.5,
   bulletVel: 1.0,
   capacity: 1.0,
   reload: 1.0,
@@ -1618,6 +1621,68 @@ slots[i].onfocus = () => {
 }
 
 /* =========================================================
+   ✅ XP CONFIG SYSTEM (CENTRALIZED)
+========================================================= */
+
+const XP_CONFIG = {
+
+  pawn: {
+    base: 0,
+    perHP: 10
+  },
+
+  missile_drone: {
+    base: 30,
+    perHP: 5
+  },
+
+  asteroid: {
+    base: 10,
+    perHP: 0
+  },
+
+  barrier: {
+    base: 20,
+    perHP: 1
+  },
+
+  heavy_asteroid: {
+    base: 0,
+    perHP: 8
+  },
+
+  heavy_asteroid_core: {
+    base: 25
+  }
+
+};
+
+// ✅ GLOBAL MULTIPLIER
+let XP_MULTIPLIER = 1.0;
+
+// ✅ UNIFIED XP CALC + AWARD
+function awardXPFromSource(type, entity = null) {
+
+  const cfg = XP_CONFIG[type];
+
+  if (!cfg) {
+    console.warn('Missing XP config for type:', type);
+    return;
+  }
+
+  const hp = entity?.maxHp ?? entity?.hp ?? 1;
+
+  const base = cfg.base ?? 0;
+  const perHP = cfg.perHP ?? 0;
+
+  let xp = base + hp * perHP;
+
+  xp *= XP_MULTIPLIER;
+
+  awardXP(Math.round(xp));
+}
+
+/* =========================================================
    ✅ ENEMY SYSTEM
 ========================================================= */
 let enemies = [];
@@ -1968,9 +2033,9 @@ asteroids.splice(ai, 1);
 
 // ✅ barrier gives more reward (feels meaningful to break)
 if (a.type === 'barrier') {
-  awardXP(40);
+  awardXPFromSource('barrier', a);
 } else {
-  awardXP(10);
+  awardXPFromSource('asteroid', a);
 }
 }
         break;
@@ -2019,7 +2084,7 @@ function triggerHeavyAsteroidBurst(a){
   // ✅ GEM BURST (tight controlled spread)
   spawnGemBurst(a.x, a.y);
 
-  awardXP(25); // ✅ reward for breaking core
+  awardXPFromSource('heavy_asteroid_core', a); // ✅ reward for breaking core
 }
 
 // =====================================================
@@ -2205,7 +2270,7 @@ function handleBulletsVsMissileDrones() {
 
         if (d.hp <= 0) {
           missileDrones.splice(di, 1);
-          awardXP(d.rewardXP ?? 25);
+          awardXPFromSource('missile_drone', d);
         }
 
         break;
@@ -2214,6 +2279,166 @@ function handleBulletsVsMissileDrones() {
   }
 }
 
+/* =========================================================
+   ✅ PAWN ENEMY SYSTEM
+   Base lane enemy with future variant hooks:
+   - normal
+   - missile_drop (future)
+   - dive_bomb (future)
+========================================================= */
+
+function createPawn(config = {}) {
+
+  const laneIndex = (
+    config.laneIndex !== undefined
+      ? clampLane(config.laneIndex)
+      : Math.floor(Math.random() * GRID_LANES.length)
+  );
+
+  // ✅ HP: 1–2 range
+  const hp = config.hp ?? (Math.random() < 0.5 ? 1 : 2);
+
+  // ✅ base fall speed
+  const baseFall = config.fall ?? 1.25;
+
+  // ✅ ±25% variation
+  const speedVariance = 0.75 + Math.random() * 0.5;
+
+  return {
+    type: 'pawn',
+    variant: config.variant ?? 'normal',
+
+    laneIndex,
+    x: GRID_LANES[laneIndex],
+    y: config.y ?? -30,
+
+    w: config.w ?? 26,
+    h: config.h ?? 26,
+
+    hp,
+    maxHp: hp,
+
+    // ✅ APPLY SPEED VARIATION HERE
+    fall: baseFall * speedVariance,
+
+    hitFlash: 0,
+
+    rewardXP: config.rewardXP ?? 20
+  };
+}
+
+function getPawnGemDropChance(pawn) {
+  const hpValue = pawn.maxHp ?? pawn.hp ?? 1;
+
+  // ✅ low HP + low luck = low chance
+  // ✅ high HP + good luck = higher chance
+  let chance =
+    0.04 +                 // small base chance
+    hpValue * 0.08 +       // HP matters a lot
+    playerLuck * 0.15;     // luck improves drop rate
+
+  return clamp(chance, 0.04, 0.85);
+}
+
+function getPawnGemDropRarity(pawn) {
+  const hpValue = pawn.maxHp ?? pawn.hp ?? 1;
+  const score = hpValue + playerLuck * 2;
+
+  // ✅ simple weighted rarity scaling
+  const roll = Math.random();
+
+  if (score < 2.5) {
+    return roll < 0.85 ? 'uncommon' : 'rare';
+  }
+
+  if (score < 4.0) {
+    if (roll < 0.55) return 'uncommon';
+    if (roll < 0.90) return 'rare';
+    return 'epic';
+  }
+
+  if (score < 6.0) {
+    if (roll < 0.35) return 'uncommon';
+    if (roll < 0.75) return 'rare';
+    if (roll < 0.95) return 'epic';
+    return 'legendary';
+  }
+
+  if (roll < 0.20) return 'uncommon';
+  if (roll < 0.55) return 'rare';
+  if (roll < 0.88) return 'epic';
+  return 'legendary';
+}
+
+function trySpawnPawnGemDrop(pawn) {
+  const chance = getPawnGemDropChance(pawn);
+
+  if (Math.random() > chance) return;
+
+  const rarity = getPawnGemDropRarity(pawn);
+  const gem = createGem(rarity, pawn.fall);
+
+
+  gem.x = pawn.x;
+  gem.y = pawn.y;
+
+  pickups.push(gem);
+}
+
+function updatePawns(dt) {
+  pawns.forEach(p => {
+
+    // ✅ straight downward movement only
+    p.y += p.fall * dt * 60;
+
+    if (p.hitFlash > 0) {
+      p.hitFlash -= dt * 6;
+      if (p.hitFlash < 0) p.hitFlash = 0;
+    }
+
+    // ✅ future variant hooks
+    if (p.variant === 'missile_drop') {
+      // reserved for future
+    }
+
+    if (p.variant === 'dive_bomb') {
+      // reserved for future
+    }
+  });
+
+  // ✅ cleanup if offscreen
+  pawns = pawns.filter(p => p.y < 640);
+
+  handleBulletsVsPawns();
+}
+
+function handleBulletsVsPawns() {
+  for (let pi = pawns.length - 1; pi >= 0; pi--) {
+    const p = pawns[pi];
+
+    for (let bi = bullets.length - 1; bi >= 0; bi--) {
+      const b = bullets[bi];
+
+      const hit =
+        b.x >= (p.x - p.w / 2) && b.x <= (p.x + p.w / 2) &&
+        b.y >= (p.y - p.h / 2) && b.y <= (p.y + p.h / 2);
+
+      if (hit) {
+        bullets.splice(bi, 1);
+        p.hp--;
+        p.hitFlash = 1;
+
+        if (p.hp <= 0) {
+          trySpawnPawnGemDrop(p);
+          awardXPFromSource('pawn', p);
+          pawns.splice(pi, 1);
+        }
+
+        break;
+      }
+    }
+  }
+}
 
 /* =========================================================
    ✅ POWER-UP SYSTEM (ALL STATS)
@@ -2453,30 +2678,40 @@ const PICKUP_RARITY = {
   legendary: { color: '#ff9933', xp: 250 }
 };
 
-function createGem(rarity = 'common') {
+function createGem(rarity, sourceFall = null) {
 
-  const data = PICKUP_RARITY[rarity];
+  let fall;
+
+  // ✅ if dropped by an object → inherit speed
+  if (sourceFall !== null) {
+
+    // 5–10% slower than source
+    const slowdown = 0.90 + Math.random() * 0.05; // 0.90 → 0.95
+
+    fall = sourceFall * slowdown;
+  }
+  else {
+    // ✅ default spawn behavior
+    fall = 0.26;
+  }
 
   return {
     type: 'gem',
-    rarity: rarity,
-    color: data.color,
-    value: data.xp,
 
-    x: getRandomLaneX(),
-    y: -20,
+    rarity,
 
-    w: 16,
-    h: 16,
+    x: 0,
+    y: 0,
 
-    fall: randRange(0.25, 0.55),
+    w: 14,
+    h: 14,
+
+    fall: fall,
 
     pulse: Math.random() * Math.PI * 2,
-    glow: 0,
-    magnetized: false
+    glow: 0
   };
 }
-
 function spawnPickup() {
 
   if (Math.random() < 0.7) return;
@@ -2585,9 +2820,18 @@ function handlePlayerPickupCollision() {
       Math.abs(p.y - playerY) < 12;
 
     if (hit) {
-      awardXP(p.value);
-      spawnPickupBurst(p.x, p.y, p.color);
-      spawnXPText(p.x, p.y, p.value, p.color);
+
+      const data = PICKUP_RARITY[p.rarity];
+
+      // ✅ fallback safety
+      const xp = data?.xp ?? 10;
+      const color = data?.color ?? '#ffffff';
+
+      awardXP(xp);
+
+      spawnPickupBurst(p.x, p.y, color);
+      spawnXPText(p.x, p.y, xp, color);
+
       pickups.splice(i, 1);
     }
   }
@@ -2668,21 +2912,21 @@ function buildMap() {
   mapNodeLookup = {};
 
 // ROW 0
-createMapNode('start', 0, 0, 'start');
+createMapNode('start', 0, 0, 'elite');
 
 // ROW 1
-createMapNode('L1', 1, -1, 'combat');
-createMapNode('R1', 1, 1, 'combat');
+createMapNode('L1', 1, -1, 'elite');
+createMapNode('R1', 1, 1, 'elite');
 
 // ROW 2
-createMapNode('L2', 2, -1, 'event');
-createMapNode('R2', 2, 1, 'combat');
+createMapNode('L2', 2, -1, 'elite');
+createMapNode('R2', 2, 1, 'elite');
 
 // ROW 3
 createMapNode('L2a', 3, -1.5, 'elite');
-createMapNode('L2b', 3, -0.5, 'combat');
-createMapNode('R2a', 3, 0.5, 'treasure');
-createMapNode('R2b', 3, 1.5, 'combat');
+createMapNode('L2b', 3, -0.5, 'elite');
+createMapNode('R2a', 3, 0.5, 'elite');
+createMapNode('R2b', 3, 1.5, 'elite');
 
 // ROW 4
 createMapNode('LL', 4, -1.5, 'combat');
@@ -3742,6 +3986,48 @@ missileDrones.forEach(d => {
 });
 
 // -----------------------------------
+// ✅ PAWNS
+// -----------------------------------
+pawns.forEach(p => {
+  ctx.save();
+
+  const flash = p.hitFlash;
+
+  let bodyR = 255;
+  let bodyG = 120 + flash * 100;
+  let bodyB = 120 + flash * 100;
+
+  if (bodyG > 255) bodyG = 255;
+  if (bodyB > 255) bodyB = 255;
+
+  ctx.fillStyle = `rgba(${bodyR},${bodyG},${bodyB},0.95)`;
+
+  // ✅ medium square-ish body
+  ctx.fillRect(p.x - p.w / 2, p.y - p.h / 2, p.w, p.h);
+
+  // ✅ inner core
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillRect(p.x - 5, p.y - 5, 10, 10);
+
+  // ✅ HP pips
+  const pipSize = 3;
+  const pipGap = 2;
+
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < p.hp; i++) {
+    ctx.fillRect(
+      p.x - ((p.hp * (pipSize + pipGap) - pipGap) / 2) + i * (pipSize + pipGap),
+      p.y + p.h / 2 + 4,
+      pipSize,
+      pipSize
+    );
+  }
+
+  ctx.restore();
+});
+
+
+// -----------------------------------
 // ✅ ENEMY MISSILES
 // -----------------------------------
 enemyMissiles.forEach(m => {
@@ -3756,6 +4042,8 @@ enemyMissiles.forEach(m => {
 
   ctx.restore();
 });
+
+
 
   // ENEMIES
 enemies.forEach(e => {
@@ -3973,7 +4261,7 @@ if (mode === 'paused') {
   ctx.fillStyle = 'rgba(255,255,255,0.15)';
   ctx.fillRect(0, 0, 600, 600);
 }
-
+/*DEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXT
 if (mode === 'game' && activeLevelDef) {
   ctx.fillStyle = '#ffffff';
   ctx.font = '12px monospace';
@@ -3987,7 +4275,7 @@ if (mode === 'game' && activeLevelDef) {
     ctx.fillText('time: ' + levelTimer.toFixed(1), 10, 65);
   }
 }
-
+DEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXTDEBUGTEXT*/
 // ✅ MAP OVERLAY (DRAW LAST)
 if (mode === 'map') {
 
@@ -4017,10 +4305,12 @@ function markLevelObjectiveComplete() {
 
 function getAliveEnemyCount() {
   const livingEnemies = enemies.filter(e => e.alive).length;
-  const livingAsteroids = asteroids.length;
+  const livingDrones = missileDrones.length;
+  const livingPawns = pawns.length;
 
-  return livingEnemies + livingAsteroids;
+  return livingEnemies + livingDrones + livingPawns;
 }
+
 
 function resetActiveLevelState() {
   activeNodeId = null;
@@ -4028,6 +4318,7 @@ function resetActiveLevelState() {
   activeLevelDef = null;
 
   levelTimer = 0;
+  levelElapsed = 0;
   levelObjectiveComplete = false;
 }
 
@@ -4047,8 +4338,9 @@ function startLevelFromNode(nodeId) {
   activeLevelKey = levelKey;
   activeLevelDef = levelDef;
 
-  levelObjectiveComplete = false;
-  levelTimer = typeof levelDef.duration === 'number' ? levelDef.duration : 0;
+levelObjectiveComplete = false;
+levelElapsed = 0;
+levelTimer = typeof levelDef.duration === 'number' ? levelDef.duration : 0;
 
   // ✅ start gameplay first (resets arena)
   startRun('game');
@@ -4064,9 +4356,16 @@ function isActiveLevelComplete() {
 
   const objective = activeLevelDef.objective;
 
-  if (objective === 'kill_all_enemies') {
-    return getAliveEnemyCount() <= 0;
+if (objective === 'kill_all_enemies') {
+
+  // ✅ 1 second startup buffer so delayed spawns
+  // don't instantly complete the level
+  if (levelElapsed < 1.0) {
+    return false;
   }
+
+  return getAliveEnemyCount() <= 0;
+}
 
   if (objective === 'survive_timer') {
     return levelTimer <= 0;
@@ -4107,8 +4406,9 @@ DEBUG_ALLOW_XP = false;
   activeLevelKey = levelKey;
   activeLevelDef = levelDef;
 
-  levelObjectiveComplete = false;
-  levelTimer = typeof levelDef.duration === 'number' ? levelDef.duration : 0;
+levelObjectiveComplete = false;
+levelElapsed = 0;
+levelTimer = typeof levelDef.duration === 'number' ? levelDef.duration : 0;
 
   // ✅ start gameplay core systems
   startRun('game');
@@ -4148,6 +4448,7 @@ asteroidSpawnTimer = 0;
 missileDrones = [];
 enemyMissiles = [];
 
+pawns = [];
   enemies = [];
   powerUps = [];
   powerUpSpawnTimer = 60;
@@ -4273,6 +4574,7 @@ function clearAllEntities() {
   asteroids = [];
   missileDrones = [];
   enemyMissiles = [];
+  pawns = [];
   powerUps = [];
   pickups = [];
   bullets = [];
@@ -4331,7 +4633,7 @@ function getBarrierWallAnchorY(wallId) {
 // ✅ encounter type -> pool of level keys
 const LEVEL_TYPE_POOLS = {
   combat: ['basic_combat'],
-  elite: ['elite_combat'],
+  elite: ['a_debug_pawn_test'],
   treasure: ['treasure_room'],
   event: ['basic_combat'], // placeholder for now
   boss: ['boss_encounter'],
@@ -4406,6 +4708,10 @@ barrier: (job = {}) => {
 missile_drone: (job = {}) => {
     return createMissileDrone(job);
   },
+
+pawn: (job = {}) => {
+  return createPawn(job);
+},
 
   asteroid: (job = {}) => {
     const a = createAsteroid();
@@ -4626,28 +4932,45 @@ const SpawnManager = {
   timers: [],
   laneCooldowns: [],
 
-  init(spawnRules = []) {
-    this.rules = Array.isArray(spawnRules) ? spawnRules : [];
-    this.timers = this.rules.map(() => 0);
-    this.laneCooldowns = new Array(GRID_LANES.length).fill(0);
-  },
+init(spawnRules = []) {
+  this.rules = Array.isArray(spawnRules) ? spawnRules : [];
+  this.timers = this.rules.map(() => 0);
+  this.laneCooldowns = new Array(GRID_LANES.length).fill(0);
+
+  // ✅ soft anti-repeat memory
+  this.recentLaneHistory = [];
+},
 
   update(dt) {
-
+// ✅ track spawns happening THIS frame
+const pendingCounts = {};
     // ✅ reduce lane cooldowns
     for (let i = 0; i < this.laneCooldowns.length; i++) {
       this.laneCooldowns[i] -= dt;
     }
 
     // ✅ process rules
-    for (let i = 0; i < this.rules.length; i++) {
-      const rule = this.rules[i];
+for (let i = 0; i < this.rules.length; i++) {
+  const rule = this.rules[i];
+
+  // ✅ START DELAY
+  if (Number.isFinite(rule.startDelay)) {
+    if (levelElapsed < rule.startDelay) continue;
+  }
+
+  // ✅ END TIME
+  if (Number.isFinite(rule.endTime)) {
+    if (levelElapsed > rule.endTime) continue;
+  }
+
 if (Number.isFinite(rule.maxAlive)) {
-        const aliveCount = this.countAliveOfType(rule.type);
-        if (aliveCount >= rule.maxAlive) {
-          this.timers[i] = this.roll(rule.min, rule.max);
-          continue;
-        }
+const aliveCount = this.countAliveOfType(rule.type);
+const pending = pendingCounts[rule.type] ?? 0;
+
+if (aliveCount + pending >= rule.maxAlive) {
+  this.timers[i] = this.roll(rule.min, rule.max);
+  continue;
+}
       }
 
       this.timers[i] -= dt;
@@ -4659,7 +4982,9 @@ if (Number.isFinite(rule.maxAlive)) {
       if (!rule.pattern) {
         const job = this.buildSingleJob(rule);
         if (job) {
-          this.executeJob(job, rule);
+          const preCount = pendingCounts[job.type] ?? 0;
+this.executeJob(job, rule);
+pendingCounts[job.type] = preCount + 1;
         }
       }
 
@@ -4670,7 +4995,11 @@ if (Number.isFinite(rule.maxAlive)) {
         const patternFunc = PatternRegistry[rule.pattern];
         if (patternFunc) {
           const jobs = patternFunc(rule.config || {});
-          jobs.forEach(job => this.executeJob(job, rule));
+jobs.forEach(job => {
+  const preCount = pendingCounts[job.type] ?? 0;
+  this.executeJob(job, rule);
+  pendingCounts[job.type] = preCount + 1;
+});
         }
       }
 
@@ -4679,26 +5008,26 @@ if (Number.isFinite(rule.maxAlive)) {
     }
   },
 
-  buildSingleJob(rule) {
-    const job = {
-      type: rule.type,
-      y: rule.y
-    };
+buildSingleJob(rule) {
+  const job = {
+    type: rule.type,
+    y: rule.y
+  };
 
-    if (!rule.free) {
-      const lane = this.getFreeLane();
-      if (lane === null) return null;
-      job.laneIndex = lane;
-    } else {
-      job.x = rule.x;
-    }
+  if (!rule.free) {
+    const lane = this.getPreferredLane(rule);
+    if (lane === null) return null;
+    job.laneIndex = lane;
+  } else {
+    job.x = rule.x;
+  }
 
-    if (rule.config) {
-      Object.assign(job, rule.config);
-    }
+  if (rule.config) {
+    Object.assign(job, rule.config);
+  }
 
-    return job;
-  },
+  return job;
+},
 
   executeJob(job, rule = {}) {
     if (!job || !job.type) return;
@@ -4713,6 +5042,7 @@ if (Number.isFinite(rule.maxAlive)) {
       }
 
       this.laneCooldowns[lane] = rule.cooldown ?? 0.8;
+this.rememberRecentLane(lane);
     }
 
     const spawnFunc = SpawnRegistry[job.type];
@@ -4748,41 +5078,123 @@ addToWorld(obj) {
     return;
   }
 
+  if (obj.type === 'pawn') {
+    pawns.push(obj);
+    return;
+  }
+
   if (obj.type === 'enemy') {
     enemies.push(obj);
     return;
   }
 },
 
-  getFreeLane() {
-    const valid = [];
+getPreferredLane(rule = {}) {
+  const type = rule.type;
+  const spawnY = rule.config?.y ?? rule.y ?? -30;
+  const laneSpacingY = rule.laneSpacingY ?? 120;
+  const recentLaneBias = rule.recentLaneBias ?? 0.35;
 
-    for (let i = 0; i < this.laneCooldowns.length; i++) {
-      if (this.laneCooldowns[i] <= 0) {
-        valid.push(i);
+  const scored = [];
+
+  for (let lane = 0; lane < this.laneCooldowns.length; lane++) {
+
+    // hard block from cooldown
+    if (this.laneCooldowns[lane] > 0) continue;
+
+    let score = 1;
+
+    // ✅ strongly avoid lanes used very recently
+    const recentIndex = this.recentLaneHistory.indexOf(lane);
+    if (recentIndex !== -1) {
+      // more recent = heavier penalty
+      const penaltyStrength = (this.recentLaneHistory.length - recentIndex);
+      score *= Math.max(0.05, recentLaneBias / penaltyStrength);
+    }
+
+    // ✅ avoid spawning too close behind same-type entities in same lane
+    if (!this.isLaneClearForType(lane, type, spawnY, laneSpacingY)) {
+      score *= 0.08; // soft penalty, not full ban
+    }
+
+    scored.push({ lane, score });
+  }
+
+  if (!scored.length) return null;
+
+  // if all lanes are weak, still allow best available
+  const total = scored.reduce((sum, x) => sum + x.score, 0);
+
+  if (total <= 0) {
+    return scored[Math.floor(Math.random() * scored.length)].lane;
+  }
+
+
+
+  let roll = Math.random() * total;
+  for (const item of scored) {
+    if (roll < item.score) return item.lane;
+    roll -= item.score;
+  }
+
+  return scored[scored.length - 1].lane;
+},
+
+isLaneClearForType(lane, type, spawnY, laneSpacingY) {
+  // ✅ for now we care most about pawn spacing
+  if (type === 'pawn') {
+    for (const p of pawns) {
+      if (p.laneIndex !== lane) continue;
+
+      const dy = Math.abs(p.y - spawnY);
+      if (dy < laneSpacingY) {
+        return false;
       }
     }
+  }
 
-    if (!valid.length) return null;
-    return valid[Math.floor(Math.random() * valid.length)];
-  },
+  // future-safe: drones could also use lane spacing later
+  if (type === 'missile_drone') {
+    for (const d of missileDrones) {
+      if (d.laneIndex !== lane) continue;
+
+      const dy = Math.abs(d.y - spawnY);
+      if (dy < laneSpacingY) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+},
+
+rememberRecentLane(lane) {
+  if (!Number.isFinite(lane)) return;
+
+  this.recentLaneHistory.unshift(lane);
+
+  // keep last 3 lanes only
+  if (this.recentLaneHistory.length > 3) {
+    this.recentLaneHistory.length = 3;
+  }
+},
 
 countAliveOfType(type) {
-    if (type === 'missile_drone') return missileDrones.length;
-    if (type === 'gem') return pickups.filter(p => p.type === 'gem').length;
-    if (type === 'enemy') return enemies.length;
+  if (type === 'missile_drone') return missileDrones.length;
+  if (type === 'pawn') return pawns.length;
+  if (type === 'gem') return pickups.filter(p => p.type === 'gem').length;
+  if (type === 'enemy') return enemies.length;
 
-    if (
-      type === 'asteroid' ||
-      type === 'heavy_asteroid' ||
-      type === 'barrier'
-    ) {
-      return asteroids.filter(a => a.type === type).length;
-    }
+  if (
+    type === 'asteroid' ||
+    type === 'heavy_asteroid' ||
+    type === 'barrier'
+  ) {
+    return asteroids.filter(a => a.type === type).length;
+  }
 
-    return 0;
-  },
-
+  return 0;
+},
 
 roll(min, max) {
     const a = Number.isFinite(min) ? min : 1;
@@ -4796,13 +5208,103 @@ roll(min, max) {
 ==================================================================================================================================================================================================================================== */
 const LEVELS = {
 
-a_Barrier_Gauntlet: {
-  type: 'combat',
+a_debug_pawn_test: {
+  type: 'elite',
   objective: 'survive_timer',
-  duration: 999999,
+  duration: 120,
 
   setup: () => {
     clearAllEntities();
+  },
+
+  update: (dt) => {
+    const level = activeLevelDef;
+
+    if (!level._init) {
+      level._init = true;
+      level._spawnRamp = 0;
+    }
+
+    // ✅ slight ramp over time
+    level._spawnRamp += dt * 0.2;
+    if (level._spawnRamp > 1) level._spawnRamp = 1;
+  },
+
+spawnRules: [
+
+  // ✅ PAWNS (entire duration)
+  {
+    type: 'pawn',
+    min: 0.9,
+    max: 1.5,
+
+    cooldown: 1.0,
+    maxAlive: 50,
+
+    laneSpacingY: 140,
+    recentLaneBias: 0.2,
+
+    config: {
+      fall: 1.25
+    }
+  },
+
+  // ✅ HEAVY ASTEROID (starts after 60s)
+  {
+    type: 'heavy_asteroid',
+
+    startDelay: 15,     // ✅ NEW
+    // no endTime → runs forever after
+
+    min: 4,
+    max: 7,
+
+    cooldown: 2.0,
+    maxAlive: 1,
+
+    config: {
+      hp: 6,
+      fall: 0.6,
+      breakDelay: 0.2
+    }
+  },
+// ✅ MISSILE DRONE (starts after 80s)
+{
+  type: 'missile_drone',
+
+  startDelay: 60,   // ✅ kicks in late game
+
+  min: 6,
+  max: 10,
+
+  cooldown: 5,
+  maxAlive: 1,   // ✅ keep it controlled
+
+  config: {
+    hoverY: 110,
+    hp: 3,
+    fireInterval: 2.2,
+    telegraphDuration: 0.45,
+    missileSpeed: 2,
+    moveSpeed: 1,
+    movementMode: 'lane_track'
+  }
+}
+
+]
+},
+
+
+Barrier_Gauntlet: {
+  type: 'combat',
+    objective: 'kill_all_enemies',
+
+  setup: () => {
+    clearAllEntities();
+
+  /* ====================================================================================
+  ======================================================================================= */
+
 
     const level = LEVELS.a_Barrier_Gauntlet;
 
@@ -4842,6 +5344,7 @@ a_Barrier_Gauntlet: {
   },
 
   update: (dt) => {
+
     const state = activeLevelDef?._wallState;
     if (!state) return;
 
@@ -4895,7 +5398,7 @@ a_Barrier_Gauntlet: {
   ======================================================================================= */
 
   Asteroid_Belt: {
-    type: 'combat',
+    type: 'boss',
     objective: 'survive_timer',
     duration: 40,
 
@@ -5026,8 +5529,8 @@ a_Barrier_Gauntlet: {
   ======================================================================================= */
 
   elite_combat: {
-    type: 'elite',
-    objective: 'kill_all_enemies',
+    type: 'combat',
+    objective: 'objective_complete',
     setup: () => {
       enemies = [];
       asteroids = [];
@@ -5035,40 +5538,6 @@ a_Barrier_Gauntlet: {
 
       enemyRows.forEach(r => {
         r.idleTime *= 0.6;
-      });
-    }
-  },
-
-  /* ====================================================================================
-  ======================================================================================= */
-
-  treasure_room: {
-    type: 'treasure',
-    objective: 'objective_complete',
-    setup: () => {
-      generatePerkChoices();
-
-      isPaused = true;
-      previousMode = 'map';
-      setMode('perk_select');
-
-      markLevelObjectiveComplete();
-    }
-  },
-
-  /* ====================================================================================
-  ======================================================================================= */
-
-  boss_encounter: {
-    type: 'boss',
-    objective: 'kill_all_enemies',
-    setup: () => {
-      enemies = [];
-      asteroids = [];
-      spawnEnemies();
-
-      enemenemyRows?.forEach(r => { r.idleTime *= 0.5; });yRows.forEach(r => {
-        r.idleTime *= 0.5;
       });
     }
   }
@@ -5201,6 +5670,8 @@ updateMapCursor(dt);
     // ✅ GAMEPLAY UPDATES (MODE GATED)
     // =====================================
 if (running && !isPaused) {
+// ✅ track real level runtime
+  levelElapsed += dt;
 if (activeLevelDef?.spawnRules) {
   SpawnManager.update(dt);
 }
@@ -5216,8 +5687,9 @@ if (activeLevelDef && typeof activeLevelDef.update === 'function') {
   activeLevelDef.update(dt);
 }
 
-  updateWeapons(dt);
+updateWeapons(dt);
 updateMissileDrones(dt);
+updatePawns(dt);
 
   // ✅ ENEMIES ONLY
   if (mode === 'game' || mode === 'debug_enemy') {
