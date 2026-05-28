@@ -130,12 +130,33 @@
   transform: scale(1.05);
 }
 
-    .focusable[disabled]{ opacity:0.45; }
+.focusable[disabled]{ opacity:0.45; }
 
-    .hidden { display:none !important; }
+.debugSelect {
+  min-height: 56px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 2px solid transparent;
+  background: rgba(28,30,33,0.92);
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 800;
+  width: 100%;
+  appearance: auto;
+}
+
+.debugSelect:focus {
+  outline: none;
+  box-shadow:
+    0 0 0 2px #ffffff inset,
+    0 0 12px rgba(255,255,255,0.6);
+}
+
+.hidden { display:none !important; }
 .hideInPerk {
   display: none;
 }
+
   </style>
 </head>
 
@@ -181,27 +202,21 @@
 
 
 <div id="panel">
-<p id="title" class="panelText">TiltGala</p>
-<p id="subtitle" class="panelText">Swipe to move lanes.</p>
+<p id="title" class="panelText">BUSTED</p>
+<p id="subtitle" class="panelText">Try better at not being bad</p>
 
   <div class="row" id="menuRow">
     <button id="btnStart" class="focusable">Start Game</button>
     <button id="btnDebug" class="focusable">Debug Mode</button>
   </div>
 
-  <div class="row hidden" id="debugRow">
-    <button id="btnDbgEnemy" class="focusable">Test Enemies</button>
-    <button id="btnDbgAsteroid" class="focusable">Test Enemy (Asteroid)</button>
-    <button id="btnDbgMove" class="focusable">Test Movement</button>
-    <button id="btnDbgWeapon" class="focusable">Test Weapon</button>
+<div class="row hidden" id="debugRow" style="flex-direction: column;">
 
-    <button id="btnDbgPower" class="focusable">Test Powerups (Fire Rate)</button>
-    <button id="btnDbgVel" class="focusable">Test Powerups (Bullet Velocity)</button>
-    <button id="btnDbgCap" class="focusable">Test Powerups (Capacity)</button>
-    <button id="btnDbgReload" class="focusable">Test Powerups (Reload)</button>
+  <select id="debugLevelSelect" class="focusable debugSelect"></select>
 
-    <button id="btnDbgBack" class="focusable">Back</button>
-  </div>
+  <button id="btnDbgLaunch" class="focusable">Launch</button>
+  <button id="btnDbgBack" class="focusable">Back</button>
+</div>
 
   <!-- ✅ MOVE THIS OUTSIDE debugRow -->
   <div class="row hidden" id="pauseRow">
@@ -280,17 +295,8 @@ btnExit: document.getElementById('btnExit'),
   btnStart: document.getElementById('btnStart'),
   btnDebug: document.getElementById('btnDebug'),
 
-  btnDbgMove: document.getElementById('btnDbgMove'),
-  btnDbgWeapon: document.getElementById('btnDbgWeapon'),
-  btnDbgEnemy: document.getElementById('btnDbgEnemy'),
-btnDbgAsteroid: document.getElementById('btnDbgAsteroid'),
-
-  btnDbgPower: document.getElementById('btnDbgPower'),
-  btnDbgVel: document.getElementById('btnDbgVel'),
-  btnDbgCap: document.getElementById('btnDbgCap'),
-
-  btnDbgReload: document.getElementById('btnDbgReload'), // ✅ THIS IS STEP 4
-
+debugLevelSelect: document.getElementById('debugLevelSelect'),
+  btnDbgLaunch: document.getElementById('btnDbgLaunch'),
   btnDbgBack: document.getElementById('btnDbgBack'),
 
 perkRow: document.getElementById('perkRow'),
@@ -305,6 +311,21 @@ const ctx = ui.canvas.getContext('2d', { alpha:true });
 
 let hasIMU = false;
 let running = false;
+
+// =====================================
+// ✅ DEV / DEBUG TOGGLE
+// =====================================
+let DEV_MODE = true; // ✅ switch this ON / OFF
+
+// ✅ XP toggle for debug
+let DEBUG_ALLOW_XP = true; // default OFF
+
+// ✅ hide debug button if dev mode is off
+if (!DEV_MODE && ui.btnDebug) {
+  ui.btnDebug.classList.add('hidden');
+}
+
+
 let isPaused = false;
 let mode = 'menu';
 
@@ -322,6 +343,19 @@ let pickupRadiusBase = 60; // ✅ base magnet radius
 let previewingPerk = null; // ✅ ADD THIS
 
 let enemyRows = [];
+let missileDrones = [];
+let enemyMissiles = [];
+
+// =====================================================
+// ✅ ACTIVE LEVEL STATE
+// =====================================================
+let activeNodeId = null;
+let activeLevelKey = null;
+let activeLevelDef = null;
+
+let levelTimer = 0;
+let levelObjectiveComplete = false;
+
 
 
 const FLASH_FADE_IN = 1.5;    // slower = smoother build
@@ -373,47 +407,8 @@ function getRarityColor(rarity) {
 }
 
 function getPerkDelta(perk) {
-  if (!perk || !perk.id) return 0;
-
-  // fire rate
-  if (perk.id === 'firerate_common') return 6;
-  if (perk.id === 'firerate_uncommon') return 10;
-  if (perk.id === 'firerate_rare') return 16;
-  if (perk.id === 'firerate_epic') return 22;
-  if (perk.id === 'firerate_legendary') return 30;
-
-// bullet velocity
-if (perk.id === 'bulletvel_common') return 0.5;
-if (perk.id === 'bulletvel_uncommon') return 1.0;
-if (perk.id === 'bulletvel_rare') return 1.5;
-if (perk.id === 'bulletvel_epic') return 2.0;
-if (perk.id === 'bulletvel_legendary') return 3.0;
-
-  // capacity
-  if (perk.id === 'capacity_common') return 1;
-  if (perk.id === 'capacity_uncommon') return 2;
-  if (perk.id === 'capacity_rare') return 3;
-  if (perk.id === 'capacity_epic') return 4;
-  if (perk.id === 'capacity_legendary') return 5;
-
-  // reload
-  if (perk.id === 'reload_common') return 20;
-  if (perk.id === 'reload_uncommon') return 35;
-  if (perk.id === 'reload_rare') return 55;
-  if (perk.id === 'reload_epic') return 80;
-  if (perk.id === 'reload_legendary') return 110;
-
-  // luck
-  if (perk.id === 'luck_rare') return 0.2;
-  if (perk.id === 'luck_epic') return 0.5;
-
-  // pickup radius
-  if (perk.id === 'pickup_uncommon') return 15;
-  if (perk.id === 'pickup_rare') return 30;
-  if (perk.id === 'pickup_epic') return 45;
-  if (perk.id === 'pickup_legendary') return 60;
-
-  return 0;
+  if (!perk || !perk.stat || !perk.rarity) return 0;
+  return getTunedPerkValue(perk.stat, perk.rarity);
 }
 
 function refreshStatUI() {
@@ -458,11 +453,8 @@ function highlightPerkPreview(perk) {
   if (perk.stat === 'fireRate') {
     target = ui.fd;
 
-const currentDelay = getFireDelay();
-const currentRps = getFireRateRPS(currentDelay);
-
-const previewDelay = Math.max(6, currentDelay - delta);
-const previewRps = getFireRateRPS(previewDelay);
+const currentRps = getFireRate();
+const previewRps = currentRps + delta;
 
 currentDisplay = currentRps.toFixed(2) + 'rps';
 totalDisplay = previewRps.toFixed(2) + 'rps';
@@ -549,6 +541,78 @@ document.addEventListener('focusin', (e) => {
 // Replace: keydown + keyup + touchstart + touchend
 // =========================================================
 document.addEventListener('keydown', (e) => {
+// =====================================
+// ✅ DEBUG KEYS (ONLY IF DEV MODE)
+//     Always pull from central perk values
+// =====================================
+if (DEV_MODE) {
+
+  // ✅ Fire Rate = uncommon fire rate perk
+  if (e.key === '1') {
+    const v = getTunedPerkValue('fireRate', 'uncommon');
+    applyFireRateBoost(v);
+    ui.status.textContent = `DEBUG: Fire Rate +${v.toFixed(2)}`;
+    return;
+  }
+
+  // ✅ Reload = uncommon reload perk
+  if (e.key === '2') {
+    const v = getTunedPerkValue('reload', 'uncommon');
+    applyReloadBoost(v);
+    ui.status.textContent = `DEBUG: Reload Faster -${(v / 60).toFixed(2)}s`;
+    return;
+  }
+
+  // ✅ Bullet Velocity = uncommon bullet velocity perk
+  if (e.key === '3') {
+    const v = getTunedPerkValue('bulletVel', 'uncommon');
+    applyBulletVelocityBoost(v);
+    ui.status.textContent = `DEBUG: Bullet Velocity +${Math.round(v * 60)} m/s`;
+    return;
+  }
+
+  // ✅ Capacity = lowest capacity perk value
+  if (e.key === '4') {
+    const v = getTunedPerkValue('capacity', 'common');
+    applyCapacityBoost(v);
+    ui.status.textContent = `DEBUG: Capacity +${Math.round(v)}`;
+    return;
+  }
+
+  // ✅ Luck = lowest luck perk value
+  if (e.key === '5') {
+    const v = getTunedPerkValue('luck', 'rare');
+    playerLuck += v;
+    ui.status.textContent = `DEBUG: Luck +${v.toFixed(2)}`;
+    return;
+  }
+
+  // ✅ Pickup Radius = lowest pickup perk value
+  if (e.key === '6') {
+    const v = getTunedPerkValue('pickup', 'uncommon');
+    pickupRadiusBase += v;
+    ui.status.textContent = `DEBUG: Pickup Radius +${Math.round(v)}`;
+    return;
+  }
+
+  // ✅ Toggle XP / Score
+  if (e.key === '`') {
+    DEBUG_ALLOW_XP = !DEBUG_ALLOW_XP;
+    ui.status.textContent = DEBUG_ALLOW_XP
+      ? 'DEBUG: XP ENABLED'
+      : 'DEBUG: XP DISABLED';
+    return;
+  }
+}
+
+
+// =========================
+// ✅ MAP MODE INPUT
+// =========================
+if (mode === 'map') {
+  handleMapKey(e);
+  return;
+}
 
 // =========================
 // ✅ GAME INPUT (ONLY when NOT paused and NOT perk_select)
@@ -586,10 +650,44 @@ if (e.key === DPAD.UP) {
   return;
 }
 
-  // =========================
+// =========================
   // ✅ MENU NAVIGATION (WORKS FOR DEBUG + PERKS + PAUSE)
   // =========================
   ensureFocus();
+
+  const ae = document.activeElement;
+
+  // ✅ native select handling in debug menu
+  if (mode === 'debugMenu' && ae === ui.debugLevelSelect) {
+
+    if (e.key === DPAD.UP || e.key === DPAD.LEFT) {
+      if (ui.debugLevelSelect.selectedIndex > 0) {
+        ui.debugLevelSelect.selectedIndex -= 1;
+      }
+      e.preventDefault();
+      return;
+    }
+
+    if (e.key === DPAD.DOWN || e.key === DPAD.RIGHT) {
+      if (ui.debugLevelSelect.selectedIndex < ui.debugLevelSelect.options.length - 1) {
+        ui.debugLevelSelect.selectedIndex += 1;
+      }
+      e.preventDefault();
+      return;
+    }
+
+    if (e.key === DPAD.SELECT) {
+      ui.btnDbgLaunch.focus();
+      e.preventDefault();
+      return;
+    }
+
+    if (e.key === DPAD.BACK) {
+      goToMenu();
+      e.preventDefault();
+      return;
+    }
+  }
 
   if (e.key === DPAD.UP || e.key === DPAD.LEFT) {
     moveFocus(-1);
@@ -604,7 +702,6 @@ if (e.key === DPAD.UP) {
   }
 
   if (e.key === DPAD.SELECT) {
-    const ae = document.activeElement;
     if (ae && ae.classList && ae.classList.contains('focusable')) {
       ae.click();
     }
@@ -617,6 +714,7 @@ if (e.key === DPAD.UP) {
     e.preventDefault();
     return;
   }
+
 });
 
 document.addEventListener('keyup', (e) => {
@@ -866,28 +964,116 @@ let wasCenteredLastFrame = true;
 ========================================================= */
 
 let weapon = {
-  baseFireDelay: 95,
+  // ✅ CORE STATS
+  baseFireRate: 0.63, // was ~60 / 95
   baseBulletSpeed: 4.5,
   baseMagSize: 6,
-  baseReloadTime: 210, // still stored in frames (we convert later)
+  baseReloadTime: 210, // still in frames
 
-  bonusFireDelay: 0,
+  // ✅ BONUS VALUES
+  bonusFireRate: 0,
   bonusBulletSpeed: 0,
   bonusMagSize: 0,
   bonusReloadTime: 0
 };
 
 let bullets = [];
-let fireTimer = 0; // still frame-based (we’ll leave it for now)
+let fireTimer = 0;
 
 let ammoInMag = 0;
 let isReloading = false;
-let reloadTimer = 0; // ✅ NOW IN SECONDS
+let reloadTimer = 0;
+
+// =====================================
+// ✅ GLOBAL PERK TUNING KNOBS
+// =====================================
+const GLOBAL_PERK_MULT = 1.0;
+
+const PERK_STAT_MULT = {
+  fireRate: 5.0,
+  bulletVel: 1.0,
+  capacity: 1.0,
+  reload: 1.0,
+  luck: 1.0,
+  pickup: 1.0
+};
+
+// =====================================
+// ✅ BASE PERK VALUES
+// =====================================
+const PERK_VALUES = {
+  fireRate: {
+    common: 0.15,
+    uncommon: 0.30,
+    rare: 0.50,
+    epic: 0.75,
+    legendary: 1.10
+  },
+
+  bulletVel: {
+    common: 0.5,
+    uncommon: 1.0,
+    rare: 1.5,
+    epic: 2.0,
+    legendary: 3.0
+  },
+
+  capacity: {
+    common: 1,
+    uncommon: 2,
+    rare: 3,
+    epic: 4,
+    legendary: 5
+  },
+
+  reload: {
+    common: 20,
+    uncommon: 35,
+    rare: 55,
+    epic: 80,
+    legendary: 110
+  },
+
+  luck: {
+    rare: 0.2,
+    epic: 0.5
+  },
+
+  pickup: {
+    uncommon: 15,
+    rare: 30,
+    epic: 45,
+    legendary: 60
+  }
+};
+
+// =====================================
+// ✅ CENTRAL VALUE LOOKUP
+// =====================================
+function getTunedPerkValue(stat, rarity) {
+  const statTable = PERK_VALUES[stat];
+  if (!statTable) return 0;
+
+  const base = statTable[rarity];
+  if (base == null) return 0;
+
+  const statMult = PERK_STAT_MULT[stat] ?? 1.0;
+  return base * statMult * GLOBAL_PERK_MULT;
+}
+
+// =====================================
+// ✅ WEAPON + STAT GETTERS
+// =====================================
+function getFireRate() {
+  return Math.max(0.1, weapon.baseFireRate + weapon.bonusFireRate);
+}
+
+function getFireRateRPS(delay) {
+  return 60 / delay;
+}
 
 function getFireDelay(){
-  return Math.max(6, Math.round(
-    weapon.baseFireDelay - weapon.bonusFireDelay
-  ));
+  return 60 / getFireRate();
 }
 
 function getBulletSpeed(){
@@ -906,72 +1092,99 @@ function getReloadTime(){
   ));
 }
 
-function getFireRateRPS(delay) {
-  return 60 / delay;
-}
-
-function getFireRateDelta(delayReduction) {
-  const currentDelay = getFireDelay();
-
-  const currentRPS = getFireRateRPS(currentDelay);
-  const newDelay = Math.max(6, currentDelay - delayReduction);
-  const newRPS = getFireRateRPS(newDelay);
-
-  return (newRPS - currentRPS).toFixed(2);
-}
-
-function getReloadDelta(framesReduction) {
-  const current = getReloadTime();
-  const newTime = Math.max(10, current - framesReduction);
-
-  const currentSec = current / 60;
-  const newSec = newTime / 60;
-
-  return (currentSec - newSec).toFixed(1);
-}
-
-// ✅ START RELOAD (convert once to seconds)
+// =====================================
+// ✅ RELOAD HELPERS
+// =====================================
 function startReload(){
   if (isReloading) return;
 
   isReloading = true;
-
-  // convert frames → seconds
   reloadTimer = getReloadTime() / 60;
 }
 
 function finishReload(){
   isReloading = false;
   ammoInMag = getMagSize();
-
-  // ✅ FIX: fire immediately after reload
   fireTimer = 0;
 }
 
+// =====================================
+// ✅ WEAPON STATE RESET
+// =====================================
 function initWeaponState(){
-  ammoInMag = 0;          // ✅ start empty
-  isReloading = true;     // ✅ immediately start reload
-  reloadTimer = (getReloadTime() / 60) * 0.75; // ✅ begin reload countdown
-
-  fireTimer = 0;
-
-  weapon.bonusFireDelay = 0;
+  // ✅ reset bonus stats FIRST
+  weapon.bonusFireRate = 0;
   weapon.bonusBulletSpeed = 0;
   weapon.bonusMagSize = 0;
   weapon.bonusReloadTime = 0;
+
+  // ✅ then reset weapon runtime state
+  ammoInMag = 0;
+  isReloading = true;
+  reloadTimer = (getReloadTime() / 60) * 0.75;
+  fireTimer = 0;
 }
 
-// ---------- POWERUP HOOKS ----------
-function applyFireRateBoost(v){ weapon.bonusFireDelay += v; }
+// =====================================
+// ✅ APPLY HELPERS
+// =====================================
+function applyFireRateBoost(v){ weapon.bonusFireRate += v; }
 function applyBulletVelocityBoost(v){ weapon.bonusBulletSpeed += v; }
 
 function applyCapacityBoost(v){
   weapon.bonusMagSize += v;
-  ammoInMag = Math.min(getMagSize(), ammoInMag + v);
+  ammoInMag = Math.min(getMagSize(), ammoInMag + Math.round(v));
 }
 
 function applyReloadBoost(v){
   weapon.bonusReloadTime += v;
+}
+
+// =====================================
+// ✅ GENERIC STAT APPLY
+// =====================================
+function applyPerkStat(stat, rarity) {
+  const v = getTunedPerkValue(stat, rarity);
+
+  if (stat === 'fireRate')   applyFireRateBoost(v);
+  if (stat === 'bulletVel')  applyBulletVelocityBoost(v);
+  if (stat === 'capacity')   applyCapacityBoost(v);
+  if (stat === 'reload')     applyReloadBoost(v);
+  if (stat === 'luck')       playerLuck += v;
+  if (stat === 'pickup')     pickupRadiusBase += v;
+}
+
+// =====================================
+// ✅ PERK DESCRIPTION FORMATTER
+// =====================================
+function getPerkDesc(stat, rarity) {
+  const v = getTunedPerkValue(stat, rarity);
+
+  if (stat === 'fireRate') {
+    return `+${v.toFixed(2)} Fire Rate`;
+  }
+
+  if (stat === 'bulletVel') {
+    return `+${Math.round(v * 60)} m/s Shot Speed`;
+  }
+
+  if (stat === 'capacity') {
+    return `+${Math.round(v)} Capacity`;
+  }
+
+  if (stat === 'reload') {
+    return `-${(v / 60).toFixed(2)}s Reload`;
+  }
+
+  if (stat === 'luck') {
+    return `+${v.toFixed(2)} Luck`;
+  }
+
+  if (stat === 'pickup') {
+    return `+${Math.round(v)} Pickup Radius`;
+  }
+
+  return '';
 }
 
 // ---------- ✅ MAIN UPDATE (REAL TIME RELOAD) ----------
@@ -979,16 +1192,15 @@ function updateWeapons(dt){
 
   const spd = getBulletSpeed();
 
-bullets.forEach(b => {
-  b.y -= spd * dt * 60;
-  b.x += b.vx * dt * 60;
-});
+  bullets.forEach(b => {
+    b.y -= spd * dt * 60;
+    b.x += b.vx * dt * 60;
+  });
 
   bullets = bullets.filter(
     b => b.y > -20 && b.x > -40 && b.x < 640
   );
 
-  // ✅ REAL TIME RELOAD
   if (isReloading) {
     reloadTimer -= dt;
 
@@ -1005,25 +1217,16 @@ bullets.forEach(b => {
 
   fireTimer -= dt;
 
-
-
-
-if (fireTimer <= 0) {
-
-  if (isPlayerCenteredInLane()) {
-    fire();
-    fireTimer = getFireDelay() / 60;
+  if (fireTimer <= 0) {
+    if (isPlayerCenteredInLane()) {
+      fire();
+      fireTimer = getFireDelay() / 60;
+    }
   }
-
-  // ✅ IMPORTANT: do NOT reset timer if not centered
-}
 }
 
 function fire(){
-
-  // ✅ prevent firing while between lanes
   if (!isPlayerCenteredInLane()) return;
-
   if (ammoInMag <= 0 || isReloading) return;
 
   bullets.push({ x: playerX, y: 520, vx: 0 });
@@ -1066,6 +1269,8 @@ function getXPRequiredFor(level){
 // This updates TOTAL XP immediately, updates LOGICAL level immediately,
 // but the UI level/bar animates with fill->flash->spill.
 function awardXP(amount){
+// ✅ block XP during debug unless enabled
+if (DEV_MODE && !DEBUG_ALLOW_XP) return;
   if (!Number.isFinite(amount) || amount <= 0) return;
 
   // total XP
@@ -1181,321 +1386,71 @@ if (Math.abs(diff) <= step) {
    ✅ PERK SYSTEM
 ========================================================= */
 
+function makePerk({ id, name, rarity, stat }) {
+  return {
+    id,
+    name,
+    rarity,
+    stat,
+    desc: () => getPerkDesc(stat, rarity),
+    apply: () => applyPerkStat(stat, rarity)
+  };
+}
+
 let availablePerks = [
 
-// ✅ COMMON
-{
-  id: 'firerate_common',
-  name: 'Rapid Trigger',
-  desc: () => `+${getFireRateDelta(6)} Fire Rate`,
-  rarity: 'common',
-stat: 'fireRate',
-  apply: () => {
-    weapon.bonusFireDelay += 6;
-  }
-},
+  // =====================================
+  // ✅ FIRE RATE
+  // =====================================
+  makePerk({ id:'firerate_common',     name:'Rapid Trigger',      rarity:'common',    stat:'fireRate' }),
+  makePerk({ id:'firerate_uncommon',   name:'Rapid Trigger+',     rarity:'uncommon',  stat:'fireRate' }),
+  makePerk({ id:'firerate_rare',       name:'Hyper Trigger',      rarity:'rare',      stat:'fireRate' }),
+  makePerk({ id:'firerate_epic',       name:'Overdrive Trigger',  rarity:'epic',      stat:'fireRate' }),
+  makePerk({ id:'firerate_legendary',  name:'God Trigger',        rarity:'legendary', stat:'fireRate' }),
 
-// ✅ UNCOMMON
-{
-  id: 'firerate_uncommon',
-  name: 'Rapid Trigger+',
-desc: () => `+${getFireRateDelta(10)} Fire Rate`,
-  rarity: 'uncommon',
-stat: 'fireRate',
-  apply: () => {
-    weapon.bonusFireDelay += 10;
-  }
-},
+  // =====================================
+  // ✅ BULLET VELOCITY
+  // =====================================
+  makePerk({ id:'bulletvel_common',     name:'Faster Rounds',         rarity:'common',    stat:'bulletVel' }),
+  makePerk({ id:'bulletvel_uncommon',   name:'Faster Rounds+',        rarity:'uncommon',  stat:'bulletVel' }),
+  makePerk({ id:'bulletvel_rare',       name:'High Velocity Rounds',  rarity:'rare',      stat:'bulletVel' }),
+  makePerk({ id:'bulletvel_epic',       name:'Hyper Velocity Rounds', rarity:'epic',      stat:'bulletVel' }),
+  makePerk({ id:'bulletvel_legendary',  name:'Rail Rounds',           rarity:'legendary', stat:'bulletVel' }),
 
-// ✅ RARE
-{
-  id: 'firerate_rare',
-  name: 'Hyper Trigger',
-desc: () => `+${getFireRateDelta(16)} Fire Rate`,
-  rarity: 'rare',
-stat: 'fireRate',
-  apply: () => {
-    weapon.bonusFireDelay += 16;
-  }
-},
+  // =====================================
+  // ✅ CAPACITY
+  // =====================================
+  makePerk({ id:'capacity_common',     name:'Extended Mag',      rarity:'common',    stat:'capacity' }),
+  makePerk({ id:'capacity_uncommon',   name:'Extended Mag+',     rarity:'uncommon',  stat:'capacity' }),
+  makePerk({ id:'capacity_rare',       name:'High Capacity Mag', rarity:'rare',      stat:'capacity' }),
+  makePerk({ id:'capacity_epic',       name:'Overflow Mag',      rarity:'epic',      stat:'capacity' }),
+  makePerk({ id:'capacity_legendary',  name:'Endless Magazinex', rarity:'legendary', stat:'capacity' }),
 
-// ✅ EPIC
-{
-  id: 'firerate_epic',
-  name: 'Overdrive Trigger',
-desc: () => `+${getFireRateDelta(22)} Fire Rate`,
-  rarity: 'epic',
-stat: 'fireRate',
-  apply: () => {
-    weapon.bonusFireDelay += 22;
-  }
-},
+  // =====================================
+  // ✅ RELOAD
+  // =====================================
+  makePerk({ id:'reload_common',      name:'Quick Reload',        rarity:'common',    stat:'reload' }),
+  makePerk({ id:'reload_uncommon',    name:'Quick Reload+',       rarity:'uncommon',  stat:'reload' }),
+  makePerk({ id:'reload_rare',        name:'Rapid Reload',        rarity:'rare',      stat:'reload' }),
+  makePerk({ id:'reload_epic',        name:'Rapid Reload+',       rarity:'epic',      stat:'reload' }),
+  makePerk({ id:'reload_legendary',   name:'Instant Feed System', rarity:'legendary', stat:'reload' }),
 
-// ✅ LEGENDARY
-{
-  id: 'firerate_legendary',
-  name: 'God Trigger',
-desc: () => `+${getFireRateDelta(30)} Fire Rate`,
-  rarity: 'legendary',
-stat: 'fireRate',
-  apply: () => {
-    weapon.bonusFireDelay += 30;
-  }
-},
+  // =====================================
+  // ✅ LUCK
+  // =====================================
+  makePerk({ id:'luck_rare',  name:'Lucky Core',     rarity:'rare', stat:'luck' }),
+  makePerk({ id:'luck_epic',  name:'Fortune Engine', rarity:'epic', stat:'luck' }),
 
-  // ✅ LUCK - RARE
-  {
-    id: 'luck_rare',
-    name: 'Lucky Core',
-    desc: '+0.2 Luck',
-    rarity: 'rare',
-stat: 'luck',
-    apply: () => {
-      playerLuck += 0.2;
-    }
-  },
-
-// ✅ LUCK - EPIC
-  {
-    id: 'luck_epic',
-    name: 'Fortune Engine',
-    desc: '+0.5 Luck',
-    rarity: 'epic',
-stat: 'luck',
-    apply: () => {
-      playerLuck += 0.5;
-    }
-  },
-
-// ✅ PICKUP RADIUS - UNCOMMON
-{
-  id: 'pickup_uncommon',
-  name: 'Magnet Field',
-  desc: '+15 Pickup Radius',
-  rarity: 'uncommon',
-stat: 'pickup',
-  apply: () => {
-    pickupRadiusBase += 15;
-  }
-},
-
-// ✅ PICKUP RADIUS - RARE
-{
-  id: 'pickup_rare',
-  name: 'Magnet Field+',
-  desc: '+30 Pickup Radius',
-  rarity: 'rare',
-stat: 'pickup',
-  apply: () => {
-    pickupRadiusBase += 30;
-  }
-},
-
-// ✅ PICKUP RADIUS - EPIC
-{
-  id: 'pickup_epic',
-  name: 'Attractor Core',
-  desc: '+45 Pickup Radius',
-  rarity: 'epic',
-stat: 'pickup',
-  apply: () => {
-    pickupRadiusBase += 45;
-  }
-},
-
-// ✅ PICKUP RADIUS - LEGENDARY
-{
-  id: 'pickup_legendary',
-  name: 'Singularity Field',
-  desc: '+60 Pickup Radius',
-  rarity: 'legendary',
-stat: 'pickup',
-  apply: () => {
-    pickupRadiusBase += 60;
-  }
-},
-
-// ✅ CAPACITY - COMMON
-{
-  id: 'capacity_common',
-  name: 'Extended Mag',
-  desc: '+1 Capacity',
-  rarity: 'common',
-stat: 'capacity',
-  apply: () => {
-    weapon.bonusMagSize += 1;
-  }
-},
-
-// ✅ CAPACITY - UNCOMMON
-{
-  id: 'capacity_uncommon',
-  name: 'Extended Mag+',
-  desc: '+2 Capacity',
-  rarity: 'uncommon',
-stat: 'capacity',
-  apply: () => {
-    weapon.bonusMagSize += 2;
-  }
-},
-
-// ✅ CAPACITY - RARE
-{
-  id: 'capacity_rare',
-  name: 'High Capacity Mag',
-  desc: '+3 Capacity',
-  rarity: 'rare',
-stat: 'capacity',
-  apply: () => {
-    weapon.bonusMagSize += 3;
-  }
-},
-
-// ✅ CAPACITY - EPIC
-{
-  id: 'capacity_epic',
-  name: 'Overflow Mag',
-  desc: '+4 Capacity',
-  rarity: 'epic',
-stat: 'capacity',
-  apply: () => {
-    weapon.bonusMagSize += 4;
-  }
-},
-
-// ✅ CAPACITY - LEGENDARY
-{
-  id: 'capacity_legendary',
-  name: 'Endless Magazinex',
-  desc: '+5 Capacity',
-  rarity: 'legendary',
-stat: 'capacity',
-  apply: () => {
-    weapon.bonusMagSize += 5;
-  }
-},
-
-// ✅ RELOAD - COMMON
-{
-  id: 'reload_common',
-  name: 'Quick Reload',
-desc: () => `-${getReloadDelta(20)}s Reload`,
-  rarity: 'common',
-stat: 'reload',
-  apply: () => {
-    weapon.bonusReloadTime += 20;
-  }
-},
-
-// ✅ RELOAD - UNCOMMON
-{
-  id: 'reload_uncommon',
-  name: 'Quick Reload+',
-desc: () => `-${getReloadDelta(35)}s Reload`,
-  rarity: 'uncommon',
-stat: 'reload',
-  apply: () => {
-    weapon.bonusReloadTime += 35;
-  }
-},
-
-// ✅ RELOAD - RARE
-{
-  id: 'reload_rare',
-  name: 'Rapid Reload',
-desc: () => `-${getReloadDelta(55)}s Reload`,
-  rarity: 'rare',
-stat: 'reload',
-  apply: () => {
-    weapon.bonusReloadTime += 55;
-  }
-},
-
-// ✅ RELOAD - EPIC
-{
-  id: 'reload_epic',
-  name: 'Rapid Reload+',
-desc: () => `-${getReloadDelta(80)}s Reload`,
-  rarity: 'epic',
-stat: 'reload',
-  apply: () => {
-    weapon.bonusReloadTime += 80;
-  }
-},
-
-// ✅ RELOAD - LEGENDARY
-{
-  id: 'reload_legendary',
-  name: 'Instant Feed System',
-desc: () => `-${getReloadDelta(110)}s Reload`,
-  rarity: 'legendary',
-stat: 'reload',
-  apply: () => {
-    weapon.bonusReloadTime += 110;
-  }
-},
-
-// ✅ BULLET VELOCITY - COMMON
-{
-  id: 'bulletvel_common',
-  name: 'Faster Rounds',
-  desc: '+30 m/s Shot Speed',
-  rarity: 'common',
-  stat: 'bulletVel',
-  apply: () => {
-    weapon.bonusBulletSpeed += 0.5;
-  }
-},
-
-// ✅ BULLET VELOCITY - UNCOMMON
-{
-  id: 'bulletvel_uncommon',
-  name: 'Faster Rounds+',
-  desc: '+60 m/s Shot Speed',
-  rarity: 'uncommon',
-  stat: 'bulletVel',
-  apply: () => {
-    weapon.bonusBulletSpeed += 1.0;
-  }
-},
-
-// ✅ BULLET VELOCITY - RARE
-{
-  id: 'bulletvel_rare',
-  name: 'High Velocity Rounds',
-  desc: '+90 m/s Shot Speed',
-  rarity: 'rare',
-  stat: 'bulletVel',
-  apply: () => {
-    weapon.bonusBulletSpeed += 1.5;
-  }
-},
-
-// ✅ BULLET VELOCITY - EPIC
-{
-  id: 'bulletvel_epic',
-  name: 'Hyper Velocity Rounds',
-  desc: '+120 m/s Shot Speed',
-  rarity: 'epic',
-  stat: 'bulletVel',
-  apply: () => {
-    weapon.bonusBulletSpeed += 2.0;
-  }
-},
-
-// ✅ BULLET VELOCITY - LEGENDARY
-{
-  id: 'bulletvel_legendary',
-  name: 'Rail Rounds',
-  desc: '+180 m/s Shot Speed',
-  rarity: 'legendary',
-  stat: 'bulletVel',
-  apply: () => {
-    weapon.bonusBulletSpeed += 3.0;
-  }
-},
+  // =====================================
+  // ✅ PICKUP RADIUS
+  // =====================================
+  makePerk({ id:'pickup_uncommon',   name:'Magnet Field',     rarity:'uncommon',  stat:'pickup' }),
+  makePerk({ id:'pickup_rare',       name:'Magnet Field+',    rarity:'rare',      stat:'pickup' }),
+  makePerk({ id:'pickup_epic',       name:'Attractor Core',   rarity:'epic',      stat:'pickup' }),
+  makePerk({ id:'pickup_legendary',  name:'Singularity Field',rarity:'legendary', stat:'pickup' }),
 
 ];
+
 
 // current offered perks
 let activePerkChoices = [];
@@ -1853,6 +1808,38 @@ function createAsteroid(){
   };
 }
 
+// =====================================
+// ✅ BARRIER (HEAVY BLOCKING ENEMY)
+// =====================================
+function createBarrier(config = {}) {
+
+  const laneIndex = (
+    config.laneIndex !== undefined
+      ? clampLane(config.laneIndex)
+      : Math.floor(Math.random() * GRID_LANES.length)
+  );
+
+  const width = config.w ?? 52;     // ✅ wider than asteroid
+  const height = config.h ?? 28;
+
+  return {
+    type: 'barrier',
+
+    laneIndex,
+
+    x: config.x ?? GRID_LANES[laneIndex],
+    y: config.y ?? -40,
+
+    w: width,
+    h: height,
+
+    hp: config.hp ?? 20,      // ✅ high durability
+    fall: config.fall ?? 0.75, // ✅ speed
+
+    hitFlash: 0
+  };
+}
+
 // spawn logic (debug forces asteroid only)
 function spawnAsteroid(){
   asteroids.push(createAsteroid());
@@ -1861,31 +1848,95 @@ function spawnAsteroid(){
 // update + collisions
 function updateAsteroids(dt){
 
-  // spawn rules
+  // ✅ debug spawning only
   if (mode === 'debug_asteroid') {
     asteroidSpawnTimer -= dt;
     if (asteroidSpawnTimer <= 0) {
       spawnAsteroid();
-      asteroidSpawnTimer = 0.6; // seconds between spawns in debug
-    }
-  } else if (mode === 'game') {
-    asteroidSpawnTimer -= dt;
-    if (asteroidSpawnTimer <= 0) {
-      spawnAsteroid();
-      asteroidSpawnTimer = ASTEROID_SPAWN_INTERVAL;
+      asteroidSpawnTimer = 0.6;
     }
   }
 
-  // movement (dt based; fall is tuned like your old per-frame values)
-  asteroids.forEach(a => {
-    a.y += a.fall * dt * 60;
-  });
+  // ✅ NO auto spawn in game mode
 
-  // cleanup offscreen
-  asteroids = asteroids.filter(a => a.y < 640);
+  // ✅ movement
+asteroids.forEach(a => {
+
+  // ✅ heavy asteroid breaking phase
+  if (a.type === 'heavy_asteroid' && a.breaking) {
+
+    a.breakTimer -= dt;
+
+    if (a.breakTimer <= 0) {
+      triggerHeavyAsteroidBurst(a);
+      a._destroy = true;
+    }
+
+    return;
+  }
+
+  // ✅ normal movement
+  a.y += a.fall * dt * 60;
+// ✅ rotation update (heavy asteroid only)
+if (a.type === 'heavy_asteroid') {
+  a.rotation += a.spin * dt * 60;
+}
+
+// ✅ fade hit flash
+if (a.hitFlash > 0) {
+  a.hitFlash -= dt * 6;
+  if (a.hitFlash < 0) a.hitFlash = 0;
+}
+
+
+});
+
+  // ✅ cleanup
+  asteroids = asteroids.filter(a => a.y < 640 && !a._destroy);
 
   handleBulletsVsAsteroids();
 }
+
+function createHeavyAsteroid(config = {}) {
+
+  const laneIndex = (
+    config.laneIndex !== undefined
+      ? clampLane(config.laneIndex)
+      : Math.floor(Math.random() * GRID_LANES.length)
+  );
+
+  const w = config.w ?? 80;
+  const h = config.h ?? 80;
+
+  const x = config.x ?? GRID_LANES[laneIndex];
+  const y = config.y ?? -h;
+
+  return {
+    type: 'heavy_asteroid',
+
+    laneIndex: laneIndex,
+
+    x: x,
+    y: y,
+
+    w: w,
+    h: h,
+
+    hp: config.hp ?? 6,
+    fall: config.fall ?? randRange(0.4, 0.6),
+
+    breaking: false,
+    breakTimer: 0,
+    breakDelay: config.breakDelay ?? 0.2,
+
+    rotation: config.rotation ?? (Math.random() * Math.PI * 2),
+    spin: config.spin ?? randRange(-0.02, 0.02),
+
+    hitFlash: 0
+  };
+}
+
+
 
 function handleBulletsVsAsteroids(){
   for (let ai = asteroids.length - 1; ai >= 0; ai--) {
@@ -1901,16 +1952,268 @@ function handleBulletsVsAsteroids(){
       if (hit) {
         bullets.splice(bi, 1);
         a.hp--;
+a.hitFlash = 1; // ✅ trigger blink
 
-        if (a.hp <= 0) {
-          asteroids.splice(ai, 1);
-awardXP(10);
-        }
+if (a.hp <= 0) {
+
+  // ✅ heavy asteroid enters break state instead of instant death
+  if (a.type === 'heavy_asteroid' && !a.breaking) {
+    a.breaking = true;
+a.breakTimer = a.breakDelay ?? 0.2;
+    return;
+  }
+
+// ✅ destruction
+asteroids.splice(ai, 1);
+
+// ✅ barrier gives more reward (feels meaningful to break)
+if (a.type === 'barrier') {
+  awardXP(40);
+} else {
+  awardXP(10);
+}
+}
         break;
       }
     }
   }
 }
+// =====================================================
+// ✅ HEAVY ASTEROID BURST
+// =====================================================
+function triggerHeavyAsteroidBurst(a){
+
+  const centerLane = a.laneIndex;
+
+  // ✅ spawn child asteroids in adjacent lanes
+  const offsets = [-1, 0, 1];
+
+  offsets.forEach(offset => {
+
+    const lane = centerLane + offset;
+
+    if (lane < 0 || lane >= GRID_LANES.length) return;
+
+    const child = createAsteroid();
+
+    child.x = GRID_LANES[lane];
+    child.y = a.y;
+
+    asteroids.push(child);
+  });
+
+  // ✅ optional 4th asteroid (slight spread)
+  if (Math.random() < 0.5) {
+
+    const dir = Math.random() < 0.5 ? -2 : 2;
+    const lane = centerLane + dir;
+
+    if (lane >= 0 && lane < GRID_LANES.length) {
+      const child = createAsteroid();
+      child.x = GRID_LANES[lane];
+      child.y = a.y;
+      asteroids.push(child);
+    }
+  }
+
+  // ✅ GEM BURST (tight controlled spread)
+  spawnGemBurst(a.x, a.y);
+
+  awardXP(25); // ✅ reward for breaking core
+}
+
+// =====================================================
+// ✅ GEM BURST (CONTROLLED)
+// =====================================================
+function spawnGemBurst(x, y){
+
+  // ✅ create single core gem
+  const gem = createGem('uncommon');
+
+  // ✅ spawn exactly at asteroid center
+  gem.x = x;
+  gem.y = y;
+
+  // =====================================
+  // ✅ HEAVY CORE REVEAL MOTION STATE
+  // =====================================
+  gem.motionType = 'heavy_core_reveal';
+  gem.motionState = 'reveal_up';
+
+  // phase 1: rise
+  gem.vy = -0.9;
+
+  // phase 2: hover
+  gem.hoverTimer = 0.12;
+
+  // phase 3: descend
+  gem.targetFallSpeed = 0.45;
+
+  pickups.push(gem);
+}
+/* =========================================================
+   ✅ MISSILE DRONE SYSTEM
+   Lane-tracking hover turret with downward missiles
+========================================================= */
+
+function createMissileDrone(config = {}) {
+  const laneIndex = (
+    config.laneIndex !== undefined
+      ? clampLane(config.laneIndex)
+      : Math.floor(GRID_LANES.length / 2)
+  );
+
+  const hoverY = config.hoverY ?? 110;
+
+  return {
+    type: 'missile_drone',
+
+    // -----------------------------------
+    // ✅ movement model
+    // lane_track = lane-based for now
+    // future variants can use free_hover later
+    // -----------------------------------
+    movementMode: config.movementMode ?? 'lane_track',
+
+    laneIndex,
+    targetLane: laneIndex,
+
+    x: config.x ?? GRID_LANES[laneIndex],
+    y: hoverY,
+
+    hoverY,
+    moveSpeed: config.moveSpeed ?? 10,
+
+    w: config.w ?? 26,
+    h: config.h ?? 18,
+    hp: config.hp ?? 3, // ✅ fragile base unit
+
+    // -----------------------------------
+    // ✅ firing
+    // -----------------------------------
+    fireInterval: config.fireInterval ?? 2.2,
+    fireTimer: config.fireInterval ?? 2.2,
+
+    telegraphDuration: config.telegraphDuration ?? 0.45,
+    telegraphTimer: 0,
+
+    missileSpeed: config.missileSpeed ?? 0.8,
+    missileW: config.missileW ?? 8,
+    missileH: config.missileH ?? 16,
+
+    hitFlash: 0,
+    rewardXP: config.rewardXP ?? 25
+  };
+}
+
+function createEnemyMissile(config = {}) {
+  return {
+    type: 'enemy_missile',
+    x: config.x ?? 300,
+    y: config.y ?? 0,
+    w: config.w ?? 8,
+    h: config.h ?? 16,
+    fall: config.fall ?? 0.8
+  };
+}
+
+function fireDroneMissile(drone) {
+  enemyMissiles.push(createEnemyMissile({
+    x: drone.x,
+    y: drone.y + drone.h / 2,
+    w: drone.missileW,
+    h: drone.missileH,
+    fall: drone.missileSpeed
+  }));
+}
+
+function updateMissileDrones(dt) {
+
+  // -----------------------------------
+  // ✅ update drones
+  // -----------------------------------
+  missileDrones.forEach(d => {
+
+    // fixed hover height
+    d.y = d.hoverY;
+
+    // ✅ lane tracking: tries to stay above player
+    if (d.movementMode === 'lane_track') {
+      d.targetLane = playerLane;
+      const targetX = GRID_LANES[d.targetLane];
+      d.x += (targetX - d.x) * Math.min(1, d.moveSpeed * dt);
+    }
+
+    // ✅ future free-hover variants could go here
+    else if (d.movementMode === 'free_hover') {
+      const targetX = playerX;
+      d.x += (targetX - d.x) * Math.min(1, d.moveSpeed * dt);
+    }
+
+    // ✅ hit flash fade
+    if (d.hitFlash > 0) {
+      d.hitFlash -= dt * 6;
+      if (d.hitFlash < 0) d.hitFlash = 0;
+    }
+
+    // -----------------------------------
+    // ✅ firing state machine
+    // -----------------------------------
+    if (d.telegraphTimer > 0) {
+      d.telegraphTimer -= dt;
+
+      if (d.telegraphTimer <= 0) {
+        fireDroneMissile(d);
+        d.fireTimer = d.fireInterval;
+      }
+    } else {
+      d.fireTimer -= dt;
+
+      if (d.fireTimer <= 0) {
+        d.telegraphTimer = d.telegraphDuration;
+      }
+    }
+  });
+
+  // -----------------------------------
+  // ✅ update missiles
+  // -----------------------------------
+  enemyMissiles.forEach(m => {
+    m.y += m.fall * dt * 60;
+  });
+
+  enemyMissiles = enemyMissiles.filter(m => m.y < 640);
+
+  handleBulletsVsMissileDrones();
+}
+
+function handleBulletsVsMissileDrones() {
+  for (let di = missileDrones.length - 1; di >= 0; di--) {
+    const d = missileDrones[di];
+
+    for (let bi = bullets.length - 1; bi >= 0; bi--) {
+      const b = bullets[bi];
+
+      const hit =
+        b.x >= (d.x - d.w / 2) && b.x <= (d.x + d.w / 2) &&
+        b.y >= (d.y - d.h / 2) && b.y <= (d.y + d.h / 2);
+
+      if (hit) {
+        bullets.splice(bi, 1);
+        d.hp--;
+        d.hitFlash = 1;
+
+        if (d.hp <= 0) {
+          missileDrones.splice(di, 1);
+          awardXP(d.rewardXP ?? 25);
+        }
+
+        break;
+      }
+    }
+  }
+}
+
 
 /* =========================================================
    ✅ POWER-UP SYSTEM (ALL STATS)
@@ -2085,16 +2388,13 @@ if (
 
 // ✅ UPDATE
 function updatePowerUps(dt){
-  powerUpSpawnTimer--;
 
-  if (powerUpSpawnTimer <= 0) {
-    spawnStatPowerUp();
-    powerUpSpawnTimer = 120;
-  }
+  // ✅ Powerups are spawned manually by level definitions only
 
   powerUps.forEach(p => {
-  p.y += p.fall * dt * 60;
-});
+    p.y += p.fall * dt * 60;
+  });
+
   powerUps = powerUps.filter(p => p.y < 640);
 
   handleBulletsVsPowerUps();
@@ -2192,12 +2492,7 @@ function spawnPickup() {
 
 function updatePickups(dt) {
 
-  pickupSpawnTimer -= dt;
-
-  if (pickupSpawnTimer <= 0) {
-    spawnPickup();
-    pickupSpawnTimer = 1.5;
-  }
+  // ✅ pickups are level-controlled only
 
   pickups.forEach(p => {
 
@@ -2213,22 +2508,72 @@ function updatePickups(dt) {
       p.magnetized = true;
     }
 
+    // =====================================
+    // ✅ MAGNET OVERRIDES ALL OTHER MOTION
+    // =====================================
     if (p.magnetized) {
       const pull = 0.05 + p.glow * 0.1;
       p.x += dx * pull;
       p.y += dy * pull;
 
       p.glow = Math.min(1, p.glow + dt * 4);
-    } else {
-      p.y += p.fall * dt * 60;
-      p.glow = Math.max(0, p.glow - dt * 2);
+      return;
     }
+
+    // =====================================
+    // ✅ SPECIAL HEAVY CORE REVEAL MOTION
+    // =====================================
+    if (p.motionType === 'heavy_core_reveal') {
+
+      if (p.motionState === 'reveal_up') {
+        // move upward
+        p.y += p.vy * dt * 60;
+
+        // ease upward speed toward zero
+        p.vy += 0.06;
+
+        if (p.vy >= 0) {
+          p.vy = 0;
+          p.motionState = 'hover';
+        }
+      }
+
+      else if (p.motionState === 'hover') {
+        p.hoverTimer -= dt;
+
+        if (p.hoverTimer <= 0) {
+          p.motionState = 'descend';
+          p.vy = 0;
+        }
+      }
+
+      else if (p.motionState === 'descend') {
+        // ramp into slow fixed downward speed
+        p.vy += 0.02;
+
+        if (p.vy > p.targetFallSpeed) {
+          p.vy = p.targetFallSpeed;
+        }
+
+        p.y += p.vy * dt * 60;
+      }
+
+      p.glow = Math.max(0, p.glow - dt * 2);
+      return;
+    }
+
+    // =====================================
+    // ✅ DEFAULT PICKUP FALLBACK
+    // =====================================
+    p.y += p.fall * dt * 60;
+    p.glow = Math.max(0, p.glow - dt * 2);
   });
 
   pickups = pickups.filter(p => p.y < 640);
 
   handlePlayerPickupCollision();
 }
+
 
 function handlePlayerPickupCollision() {
 
@@ -2273,6 +2618,665 @@ function spawnXPText(x, y, value, color) {
     vy: -0.6,
     drift: randRange(-0.3, 0.3)
   });
+}
+/* =========================================================
+   ✅ NODE MAP SYSTEM (PHASE 2 - NAVIGATION)
+========================================================= */
+
+let mapNodes = [];
+let mapNodeLookup = {};
+let mapCurrentNodeId = 'start';
+let mapPreviewNodeId = null;
+let mapReachableNodeIds = [];
+let mapVisitedNodeIds = [];
+let mapCompletedNodeIds = [];
+
+let mapCursorX = 0;
+let mapCursorY = 0;
+let mapCursorTargetX = 0;
+let mapCursorTargetY = 0;
+
+function createMapNode(id, row, col, type = 'combat') {
+  const node = {
+    id,
+    row,
+    col,
+
+    x: 0,
+    y: 0,
+
+    type, // ✅ NEW
+    data: {}, // ✅ future info container
+
+    connectsTo: [],
+  };
+
+  mapNodes.push(node);
+  mapNodeLookup[id] = node;
+}
+
+
+// ✅ CONNECTION HELPER
+function connect(a, b) {
+  mapNodeLookup[a].connectsTo.push(b);
+}
+
+// ✅ BUILD FIXED MAP (YOUR CURRENT SETTINGS PRESERVED)
+function buildMap() {
+
+  mapNodes = [];
+  mapNodeLookup = {};
+
+// ROW 0
+createMapNode('start', 0, 0, 'start');
+
+// ROW 1
+createMapNode('L1', 1, -1, 'combat');
+createMapNode('R1', 1, 1, 'combat');
+
+// ROW 2
+createMapNode('L2', 2, -1, 'event');
+createMapNode('R2', 2, 1, 'combat');
+
+// ROW 3
+createMapNode('L2a', 3, -1.5, 'elite');
+createMapNode('L2b', 3, -0.5, 'combat');
+createMapNode('R2a', 3, 0.5, 'treasure');
+createMapNode('R2b', 3, 1.5, 'combat');
+
+// ROW 4
+createMapNode('LL', 4, -1.5, 'combat');
+createMapNode('LR', 4, -0.5, 'elite');
+createMapNode('RL', 4, 0.5, 'combat');
+createMapNode('RR', 4, 1.5, 'treasure');
+
+// ROW 5
+createMapNode('boss', 5, 0, 'boss');
+
+
+  // ✅ CONNECTIONS (your exact logic)
+  connect('start', 'L1');
+  connect('start', 'R1');
+
+  connect('L1', 'L2');
+  connect('R1', 'R2');
+
+  connect('L2', 'L2a');
+  connect('L2', 'L2b');
+
+  connect('R2', 'R2a');
+  connect('R2', 'R2b');
+
+  connect('L2a', 'LL');
+  connect('L2b', 'LR');
+
+  connect('R2a', 'RL');
+  connect('R2b', 'RR');
+
+  connect('LL', 'boss');
+  connect('LR', 'boss');
+  connect('RL', 'boss');
+  connect('RR', 'boss');
+
+  // ✅ CALCULATE POSITIONS (your current spacing preserved)
+  mapNodes.forEach(n => {
+    const centerX = 150;
+    const rowSpacing = 90;
+
+    n.y = 550 - n.row * rowSpacing;
+
+    // ✅ push boss further upward
+    if (n.id === 'boss') {
+      n.y -= 40;
+    }
+
+    let colSpacing = 70;
+    if (n.row === 3) colSpacing = 80;
+    if (n.row === 4) colSpacing = 80;
+
+    n.x = centerX + n.col * colSpacing;
+  });
+
+// ✅ generate node encounter data
+mapNodes.forEach(n => {
+
+  // ✅ start node never executes a level
+  if (n.type === 'start') {
+    n.data = {
+      encounters: [],
+      resolvedType: null,
+      resolvedLevel: null
+    };
+  }
+
+  // ✅ sample weighted combat nodes
+  //    this is where you define node-by-node variety
+  if (n.type === 'combat') {
+
+    // example: first row combat nodes are mostly asteroid tests, sometimes normal combat
+    if (n.id === 'L1' || n.id === 'R1') {
+      n.data = {
+        encounters: [
+          { type: 'asteroid', weight: 75 },
+          { type: 'combat', weight: 25 }
+        ],
+        resolvedType: null,
+        resolvedLevel: null,
+        difficulty: 1 + n.row * 0.5
+      };
+    }
+
+    // all other combat nodes default to normal combat, sometimes asteroid
+    else {
+      n.data = {
+        encounters: [
+          { type: 'combat', weight: 75 },
+          { type: 'asteroid', weight: 25 }
+        ],
+        resolvedType: null,
+        resolvedLevel: null,
+        difficulty: 1 + n.row * 0.5
+      };
+    }
+  }
+
+  if (n.type === 'elite') {
+    n.data = {
+      encounters: [
+        { type: 'elite', weight: 100 }
+      ],
+      resolvedType: null,
+      resolvedLevel: null,
+      difficulty: 2 + n.row
+    };
+  }
+
+  if (n.type === 'treasure') {
+    n.data = {
+      encounters: [
+        { type: 'treasure', weight: 100 }
+      ],
+      resolvedType: null,
+      resolvedLevel: null
+    };
+  }
+
+  if (n.type === 'event') {
+    n.data = {
+      encounters: [
+        { type: 'event', weight: 100 }
+      ],
+      resolvedType: null,
+      resolvedLevel: null
+    };
+  }
+
+  if (n.type === 'boss') {
+    n.data = {
+      encounters: [
+        { type: 'boss', weight: 100 }
+      ],
+      resolvedType: null,
+      resolvedLevel: null,
+      difficulty: 10
+    };
+  }
+});
+
+
+}
+
+function resetMapState() {
+  buildMap();
+
+  // ✅ roll and lock node results for this run
+  resolveRandomizedNodeLevels();
+
+  mapCurrentNodeId = 'start';
+  mapPreviewNodeId = null;
+
+  // ✅ nothing is reachable until current node is confirmed
+  mapReachableNodeIds = [];
+
+  mapVisitedNodeIds = ['start'];
+  mapCompletedNodeIds = [];
+
+  const startNode = mapNodeLookup['start'];
+
+  mapCursorX = startNode.x;
+  mapCursorY = startNode.y;
+  mapCursorTargetX = startNode.x;
+  mapCursorTargetY = startNode.y;
+}
+
+// ✅ ENTER MAP MODE
+function enterMapMode() {
+  resetRunState();
+  resetMapState();
+
+  running = false;
+  isPaused = false;
+
+  setMode('map');
+}
+
+// ✅ CURSOR LERP
+function updateMapCursor(dt) {
+  if (mode !== 'map') return;
+
+  const lerp = Math.min(1, 10 * dt);
+  mapCursorX += (mapCursorTargetX - mapCursorX) * lerp;
+  mapCursorY += (mapCursorTargetY - mapCursorY) * lerp;
+}
+
+// ✅ SET PREVIEW
+function setMapPreview(nodeId) {
+  mapPreviewNodeId = nodeId;
+
+  const node = mapNodeLookup[nodeId];
+  if (!node) return;
+
+  mapCursorTargetX = node.x;
+  mapCursorTargetY = node.y;
+}
+
+// ✅ CLEAR PREVIEW BACK TO CURRENT
+function clearMapPreview() {
+  mapPreviewNodeId = null;
+
+  const node = mapNodeLookup[mapCurrentNodeId];
+  if (!node) return;
+
+  mapCursorTargetX = node.x;
+  mapCursorTargetY = node.y;
+}
+
+// ✅ CYCLE CURRENT REACHABLE OPTIONS
+function cycleMapPreview(dir) {
+  if (!mapReachableNodeIds.length) return;
+
+  if (!mapPreviewNodeId) {
+    if (dir < 0) {
+      setMapPreview(mapReachableNodeIds[mapReachableNodeIds.length - 1]);
+    } else {
+      setMapPreview(mapReachableNodeIds[0]);
+    }
+    return;
+  }
+
+  const idx = mapReachableNodeIds.indexOf(mapPreviewNodeId);
+  const next = (idx + dir + mapReachableNodeIds.length) % mapReachableNodeIds.length;
+
+  setMapPreview(mapReachableNodeIds[next]);
+}
+
+
+
+
+
+
+function confirmMapAction() {
+
+  // =====================================
+  // ✅ CASE 1: preview exists
+  // =====================================
+  if (mapPreviewNodeId) {
+
+    // ❌ preview is NOT selectable
+    // ✅ snap back to first selectable node instead of failing silently
+    if (!mapReachableNodeIds.includes(mapPreviewNodeId)) {
+      if (mapReachableNodeIds.length) {
+        setMapPreview(mapReachableNodeIds[0]);
+      } else {
+        clearMapPreview();
+      }
+      return;
+    }
+
+    // ✅ valid move
+    mapCurrentNodeId = mapPreviewNodeId;
+
+    if (!mapVisitedNodeIds.includes(mapCurrentNodeId)) {
+      mapVisitedNodeIds.push(mapCurrentNodeId);
+    }
+
+    const node = mapNodeLookup[mapCurrentNodeId];
+
+    mapCursorX = node.x;
+    mapCursorY = node.y;
+    mapCursorTargetX = node.x;
+    mapCursorTargetY = node.y;
+
+    mapPreviewNodeId = null;
+
+    // ✅ must confirm this node before unlocking next paths
+    mapReachableNodeIds = [];
+
+    return;
+  }
+
+  // =====================================
+  // ✅ CASE 2: NO preview → confirm current node
+  // =====================================
+  if (!mapCompletedNodeIds.includes(mapCurrentNodeId)) {
+
+    mapCompletedNodeIds.push(mapCurrentNodeId);
+
+// ✅ ✅ ✅ EXECUTE NODE HERE
+executeNode(mapCurrentNodeId);
+
+    // ✅ unlock next row
+    mapReachableNodeIds = mapNodeLookup[mapCurrentNodeId].connectsTo.slice();
+
+    // ✅ auto-snap preview to first valid selectable node
+    if (mapReachableNodeIds.length) {
+      setMapPreview(mapReachableNodeIds[0]);
+    }
+  }
+}
+
+function executeNode(nodeId) {
+  const node = mapNodeLookup[nodeId];
+  if (!node) return;
+
+  const levelKey = node.data?.resolvedLevel;
+  const levelDef = LEVELS[levelKey];
+
+  if (!levelDef) {
+    console.warn('No resolved level found for node:', nodeId, node.data);
+    return;
+  }
+
+  console.log('EXEC TYPE:', node.data?.resolvedType, 'LEVEL:', levelKey);
+
+  // ✅ treasure can resolve immediately through its setup
+  if (levelDef.type === 'treasure') {
+    activeNodeId = nodeId;
+    activeLevelKey = levelKey;
+    activeLevelDef = levelDef;
+
+    if (levelDef.setup) {
+      levelDef.setup();
+    }
+
+    completeActiveLevel();
+    return;
+  }
+
+  startLevelFromNode(nodeId);
+}
+
+
+// ✅ MAP INPUT
+function handleMapKey(e) {
+
+  if (e.key === DPAD.BACK) {
+    goToMenu();
+    e.preventDefault();
+    return;
+  }
+
+if (e.key === DPAD.LEFT || e.key === DPAD.RIGHT || e.key === DPAD.UP || e.key === DPAD.DOWN) {
+
+  const current = mapPreviewNodeId
+    ? mapNodeLookup[mapPreviewNodeId]
+    : mapNodeLookup[mapCurrentNodeId];
+
+  let bestNode = null;
+  let bestScore = Infinity;
+
+mapNodes.forEach(n => {
+
+  if (n.id === current.id) return;
+
+  const dx = n.x - current.x;
+  const dy = n.y - current.y;
+
+  let valid = false;
+
+  // ✅ directional checks
+  if (e.key === DPAD.LEFT && dx < 0) valid = true;
+  if (e.key === DPAD.RIGHT && dx > 0) valid = true;
+  if (e.key === DPAD.UP && dy < 0) valid = true;
+  if (e.key === DPAD.DOWN && dy > 0) valid = true;
+
+  if (!valid) return;
+
+  let score;
+
+  if (e.key === DPAD.LEFT || e.key === DPAD.RIGHT) {
+
+    // ✅ STRONG ROW LOCK
+    const ROW_BIAS = 2.5;
+
+    score = Math.abs(dx) + Math.abs(dy) * ROW_BIAS;
+
+  } else {
+
+    // ✅ vertical movement stays natural
+    const COL_BIAS = 0.5;
+
+    score = Math.abs(dy) + Math.abs(dx) * COL_BIAS;
+  }
+
+  if (score < bestScore) {
+    bestScore = score;
+    bestNode = n;
+  }
+});
+
+  if (bestNode) {
+    setMapPreview(bestNode.id);
+  }
+
+  e.preventDefault();
+  return;
+}
+
+if (e.key === DPAD.SELECT) {
+  confirmMapAction();
+  e.preventDefault();
+  return;
+}
+}
+
+// ✅ DRAW MAP
+function drawMap() {
+  ctx.save();
+
+
+  // -------- DRAW CONNECTION LINES --------
+  mapNodes.forEach(node => {
+    node.connectsTo.forEach(targetId => {
+      const t = mapNodeLookup[targetId];
+
+      let lineColor = 'rgba(255,255,255,0.2)';
+// ✅ start node lines slightly dimmer
+if (node.id === 'start') {
+  lineColor = 'rgba(255,255,255,0.1)';
+}
+      let lineWidth = 2;
+
+      const aVisited = mapVisitedNodeIds.includes(node.id);
+      const bVisited = mapVisitedNodeIds.includes(targetId);
+
+      if (aVisited && bVisited) {
+        lineColor = 'rgba(0,212,255,0.8)';
+        lineWidth = 3;
+      }
+
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = lineWidth;
+
+      ctx.beginPath();
+      ctx.moveTo(node.x, node.y);
+      ctx.lineTo(t.x, t.y);
+      ctx.stroke();
+// ✅ DEBUG ICON (resolved type)
+const type = node.data?.resolvedType;
+
+let label = '?';
+
+if (type === 'combat') label = 'C';
+else if (type === 'elite') label = 'E';
+else if (type === 'treasure') label = '💰';
+else if (type === 'event') label = 'EV';
+else if (type === 'boss') label = 'B';
+else if (type === 'asteroid') label = 'A';
+
+ctx.font = 'bold 11px monospace';
+ctx.textAlign = 'center';
+ctx.textBaseline = 'middle';
+
+// ✅ white outline (stroke)
+ctx.strokeStyle = '#000';
+ctx.lineWidth = 3;
+ctx.strokeText(label, node.x, node.y);
+
+// ✅ white fill
+ctx.fillStyle = '#ffffff';
+    });
+  });
+
+  // -------- DRAW NODES --------
+  mapNodes.forEach(node => {
+
+const isCurrent = node.id === mapCurrentNodeId;
+const isPreview = node.id === mapPreviewNodeId;
+const isReachable = mapReachableNodeIds.includes(node.id);
+const isVisited = mapVisitedNodeIds.includes(node.id);
+const isCompleted = mapCompletedNodeIds.includes(node.id);
+
+// ✅ future nodes = scoutable but not currently reachable
+const isFuture =
+  !isReachable &&
+  !isCurrent &&
+  node.id !== 'start' &&
+  node.connectsTo.length > 0;
+
+let color = '#ffffff';
+
+const displayType = node.data?.resolvedType || node.type;
+
+if (displayType === 'start') color = '#00d4ff';
+else if (displayType === 'boss') color = '#ff3355';
+else if (displayType === 'combat') color = '#ffffff';
+else if (displayType === 'elite') color = '#ff66cc';
+else if (displayType === 'treasure') color = '#ffd400';
+else if (displayType === 'event') color = '#66ccff';
+else if (displayType === 'asteroid') color = '#bbbbbb';
+
+// ✅ dim future nodes slightly
+if (isFuture) {
+  color = 'rgba(255,255,255,0.6)';
+}
+
+if (isPreview) {
+  ctx.shadowColor = '#ffffff';
+  ctx.shadowBlur = 14;
+}
+else if (isCurrent) {
+  ctx.shadowColor = '#00d4ff';
+  ctx.shadowBlur = 12;
+}
+else if (isReachable) {
+  ctx.shadowColor = '#00d4ff';
+  ctx.shadowBlur = 8;
+}
+else if (isFuture) {
+  // ✅ subtle dim glow for scouting
+  ctx.shadowColor = '#444';
+  ctx.shadowBlur = 4;
+}
+else {
+  ctx.shadowBlur = 0;
+}
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, isPreview ? 13 : 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (isCurrent || isPreview || isReachable) {
+      ctx.lineWidth = isPreview ? 3 : 2;
+      ctx.strokeStyle = isPreview ? '#ffffff' : '#66ccff';
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, isPreview ? 16 : 13, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+if (isCompleted && !isCurrent && !isPreview) {
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.beginPath();
+  ctx.arc(node.x, node.y, 4, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+
+    ctx.shadowBlur = 0;
+  });
+// =====================================
+// ✅ DRAW NODE ICONS (ALWAYS ON TOP)
+// =====================================
+mapNodes.forEach(node => {
+
+  const type = node.data?.resolvedType;
+  if (!type) return;
+
+  let label = '?';
+
+  if (type === 'combat') label = '⚔️';
+  else if (type === 'elite') label = '💀';
+  else if (type === 'treasure') label = '💰';
+  else if (type === 'event') label = 'EV';
+  else if (type === 'boss') label = '𓆩😈𓆪';
+  else if (type === 'asteroid') label = '';
+
+  // ✅ draw ABOVE everything
+  ctx.save();
+
+  ctx.font = 'bold 25px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // outline (for readability)
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 4;
+  ctx.strokeText(label, node.x, node.y);
+
+  // fill
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(label, node.x, node.y);
+
+  ctx.restore();
+});
+
+  // -------- DRAW CURSOR --------
+  ctx.save();
+  ctx.translate(mapCursorX, mapCursorY);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(0, -12);
+  ctx.lineTo(8, 0);
+  ctx.lineTo(0, 12);
+  ctx.lineTo(-8, 0);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+ctx.fillStyle = '#ffffff';
+ctx.font = '12px monospace';
+ctx.textAlign = 'left';
+
+const debugNode = mapNodeLookup[mapPreviewNodeId || mapCurrentNodeId];
+if (debugNode) {
+  ctx.fillText('node: ' + debugNode.id, 10, 540);
+  ctx.fillText('base type: ' + debugNode.type, 10, 555);
+  ctx.fillText('resolved type: ' + String(debugNode.data?.resolvedType), 10, 570);
+  ctx.fillText('resolved level: ' + String(debugNode.data?.resolvedLevel), 10, 585);
+}
+  ctx.restore();
 }
 /* =========================================================
    ✅ RENDER SYSTEM (WITH ONSCREEN ERROR DISPLAY)
@@ -2325,6 +3329,7 @@ if (r < 0.6) return '#ffffff';
 }
 
 function updateStars(dt){
+  if (mode !== 'map') {
   stars.forEach(s => {
 
     // ✅ stars move during gameplay/debug/perk
@@ -2357,6 +3362,7 @@ function updateStars(dt){
     // ✅ always twinkle
     s.twinkle += dt * 4;
   });
+}
 
   // ✅ decay burst once per frame
   if (perkEnterBoost > 0) {
@@ -2439,7 +3445,7 @@ if (mode === 'perk_select') {
 // ✅ GAMEPLAY DRAWING
 //     Hidden entirely during perk_select
 // =====================================================
-if (!hideGameplay) {
+if (!hideGameplay && mode !== 'map') {
 
   // PLAYER
   ctx.fillStyle = '#00d4ff';
@@ -2520,11 +3526,236 @@ if (!hideGameplay) {
   ctx.fillStyle = '#ffffff';
   bullets.forEach(b => ctx.fillRect(b.x - 2, b.y, 4, 10));
 
-  // ASTEROIDS
-  ctx.fillStyle = 'rgba(200,200,200,0.95)';
-  asteroids.forEach(a => {
+// ASTEROIDS
+asteroids.forEach(a => {
+
+if (a.type === 'barrier') {
+
+  ctx.save();
+
+  // ✅ main body
+  ctx.fillStyle = 'rgba(255,200,60,0.95)';
+  ctx.fillRect(a.x - a.w/2, a.y - a.h/2, a.w, a.h);
+
+  // ✅ inner stripe (visual clarity)
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillRect(a.x - a.w/2 + 6, a.y - a.h/2, 6, a.h);
+
+  // ✅ HP bars
+  const pipSize = 3;
+  const pipGap = 2;
+  const maxPerRow = 10;
+
+  ctx.fillStyle = '#ffffff';
+
+  for (let i = 0; i < a.hp; i++) {
+    const row = Math.floor(i / maxPerRow);
+    const col = i % maxPerRow;
+
+    const rowCount = Math.min(a.hp - row * maxPerRow, maxPerRow);
+    const totalW = rowCount * (pipSize + pipGap) - pipGap;
+
+    const startX = a.x - totalW / 2;
+
+    ctx.fillRect(
+      startX + col * (pipSize + pipGap),
+      a.y + a.h/2 + 4 + row * (pipSize + pipGap),
+      pipSize,
+      pipSize
+    );
+  }
+
+  ctx.restore();
+  return;
+}
+
+if (a.type === 'heavy_asteroid') {
+
+  ctx.save();
+
+  ctx.translate(a.x, a.y);
+  ctx.rotate(a.rotation);
+
+  // ===================================
+  // ✅ BREAK ANIMATION CALC
+  // ===================================
+  let breakT = 0;
+
+  if (a.breaking) {
+    // normalize 0 → 1
+    const breakDuration = a.breakDelay ?? 0.2;
+breakT = 1 - (a.breakTimer / breakDuration);
+    breakT = Math.max(0, Math.min(1, breakT));
+  }
+
+  // ✅ PULSE SCALE
+  const pulseScale = 1 + breakT * 0.25;
+
+  ctx.scale(pulseScale, pulseScale);
+
+  // ✅ COLOR SHIFT (brighter during break)
+let base = 200 + breakT * 55;
+
+// ✅ APPLY HIT FLASH
+base += a.hitFlash * 80;
+
+if (base > 255) base = 255;
+
+ctx.fillStyle = `rgba(${base},${base},${base},0.95)`;
+
+
+  // ===================================
+  // ✅ MAIN BODY
+  // ===================================
+  ctx.beginPath();
+  ctx.arc(0, 0, a.w / 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ===================================
+  // ✅ ROTATION STRIPE
+  // ===================================
+  ctx.fillStyle = 'rgba(160,160,160,0.9)';
+
+  const stripeWidth = a.w * 0.2;
+
+  ctx.fillRect(
+    -stripeWidth / 2,
+    -a.h / 2,
+    stripeWidth,
+    a.h
+  );
+
+  // ===================================
+  // ✅ CRACK LINES (ONLY DURING BREAK)
+  // ===================================
+  if (a.breaking) {
+
+    ctx.strokeStyle = `rgba(255,255,255,${0.5 + breakT * 0.5})`;
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+
+    // center crack
+    ctx.moveTo(0, 0);
+    ctx.lineTo(a.w * 0.35, -a.h * 0.35);
+
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-a.w * 0.3, a.h * 0.3);
+
+    ctx.moveTo(0, 0);
+    ctx.lineTo(a.w * 0.2, a.h * 0.4);
+
+    ctx.stroke();
+  }
+ctx.restore();
+
+// ===================================
+// ✅ HP PIPS (WORLD-ALIGNED — NOT ROTATING)
+// ===================================
+const pipSize = 4;
+const pipGap = 2;
+const maxPerRow = 8;
+
+ctx.fillStyle = '#ffffff';
+
+for (let i = 0; i < a.hp; i++) {
+
+  const row = Math.floor(i / maxPerRow);
+  const col = i % maxPerRow;
+
+  const rowCount = Math.min(a.hp - row * maxPerRow, maxPerRow);
+  const totalW = rowCount * (pipSize + pipGap) - pipGap;
+
+  const startX = a.x - totalW / 2;
+
+  ctx.fillRect(
+    startX + col * (pipSize + pipGap),
+    a.y + (a.h / 2) + 6 + row * (pipSize + pipGap),
+    pipSize,
+    pipSize
+  );
+}
+
+  ctx.restore();
+
+} else {
+
+    // ✅ normal asteroids unchanged
+    ctx.fillStyle = 'rgba(200,200,200,0.95)';
     ctx.fillRect(a.x - a.w/2, a.y - a.h/2, a.w, a.h);
-  });
+
+  }
+
+});
+
+// -----------------------------------
+// ✅ MISSILE DRONES
+// -----------------------------------
+missileDrones.forEach(d => {
+  ctx.save();
+
+  const telegraphing = d.telegraphTimer > 0;
+  const flash = telegraphing
+    ? (0.6 + Math.sin(performance.now() * 0.03) * 0.4)
+    : 0;
+
+  // main body
+  let bodyR = 120 + d.hitFlash * 100;
+  let bodyG = 180 + d.hitFlash * 60;
+  let bodyB = 255;
+
+  if (bodyR > 255) bodyR = 255;
+  if (bodyG > 255) bodyG = 255;
+
+  ctx.fillStyle = `rgba(${bodyR},${bodyG},${bodyB},0.95)`;
+
+  ctx.beginPath();
+  ctx.moveTo(d.x, d.y - d.h / 2);
+  ctx.lineTo(d.x + d.w / 2, d.y);
+  ctx.lineTo(d.x, d.y + d.h / 2);
+  ctx.lineTo(d.x - d.w / 2, d.y);
+  ctx.closePath();
+  ctx.fill();
+
+  // telegraph glow
+  if (telegraphing) {
+    ctx.strokeStyle = `rgba(255,80,80,${flash})`;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(d.x - d.w / 2 - 3, d.y - d.h / 2 - 3, d.w + 6, d.h + 6);
+  }
+
+  // HP pips
+  const pipSize = 3;
+  const pipGap = 2;
+
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < d.hp; i++) {
+    ctx.fillRect(
+      d.x - ((d.hp * (pipSize + pipGap) - pipGap) / 2) + i * (pipSize + pipGap),
+      d.y + d.h / 2 + 4,
+      pipSize,
+      pipSize
+    );
+  }
+
+  ctx.restore();
+});
+
+// -----------------------------------
+// ✅ ENEMY MISSILES
+// -----------------------------------
+enemyMissiles.forEach(m => {
+  ctx.save();
+
+  ctx.fillStyle = '#ff5555';
+  ctx.fillRect(m.x - m.w / 2, m.y - m.h / 2, m.w, m.h);
+
+  // optional brighter core
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillRect(m.x - 1, m.y - m.h / 2, 2, m.h);
+
+  ctx.restore();
+});
 
   // ENEMIES
 enemies.forEach(e => {
@@ -2735,10 +3966,6 @@ xpTexts.forEach(t => {
   });
 }
 
-
-
-
-
 if (mode === 'paused') {
   ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
   ctx.fillRect(0, 0, 600, 600);
@@ -2747,9 +3974,151 @@ if (mode === 'paused') {
   ctx.fillRect(0, 0, 600, 600);
 }
 
+if (mode === 'game' && activeLevelDef) {
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '12px monospace';
+  ctx.textAlign = 'left';
+
+  ctx.fillText('level: ' + activeLevelKey, 10, 20);
+  ctx.fillText('objective: ' + activeLevelDef.objective, 10, 35);
+  ctx.fillText('alive: ' + getAliveEnemyCount(), 10, 50);
+
+  if (activeLevelDef.objective === 'survive_timer') {
+    ctx.fillText('time: ' + levelTimer.toFixed(1), 10, 65);
+  }
+}
+
+// ✅ MAP OVERLAY (DRAW LAST)
+if (mode === 'map') {
+
+  // ✅ clean background (no stars, no gameplay)
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, 600, 600);
+
+  drawMap();
+
+  // ✅ debug label
+  ctx.fillStyle = '#fff';
+  ctx.font = '16px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('MAP MODE (Phase 1)', 300, 30);
+}
 
 
 }
+
+/* =========================================================
+   ✅ LEVEL COMPLETION LOGIC
+========================================================= */
+
+function markLevelObjectiveComplete() {
+  levelObjectiveComplete = true;
+}
+
+function getAliveEnemyCount() {
+  const livingEnemies = enemies.filter(e => e.alive).length;
+  const livingAsteroids = asteroids.length;
+
+  return livingEnemies + livingAsteroids;
+}
+
+function resetActiveLevelState() {
+  activeNodeId = null;
+  activeLevelKey = null;
+  activeLevelDef = null;
+
+  levelTimer = 0;
+  levelObjectiveComplete = false;
+}
+
+function startLevelFromNode(nodeId) {
+  const node = mapNodeLookup[nodeId];
+  if (!node) return;
+
+  const levelKey = node.data?.resolvedLevel;
+  const levelDef = LEVELS[levelKey];
+
+  if (!levelDef) {
+    console.warn('Missing level def for node:', nodeId, levelKey);
+    return;
+  }
+
+  activeNodeId = nodeId;
+  activeLevelKey = levelKey;
+  activeLevelDef = levelDef;
+
+  levelObjectiveComplete = false;
+  levelTimer = typeof levelDef.duration === 'number' ? levelDef.duration : 0;
+
+  // ✅ start gameplay first (resets arena)
+  startRun('game');
+
+  // ✅ then apply level-specific setup
+  if (levelDef.setup) {
+    levelDef.setup();
+  }
+}
+
+function isActiveLevelComplete() {
+  if (!activeLevelDef) return false;
+
+  const objective = activeLevelDef.objective;
+
+  if (objective === 'kill_all_enemies') {
+    return getAliveEnemyCount() <= 0;
+  }
+
+  if (objective === 'survive_timer') {
+    return levelTimer <= 0;
+  }
+
+  if (objective === 'objective_complete') {
+    return levelObjectiveComplete === true;
+  }
+
+  return false;
+}
+
+function completeActiveLevel() {
+  if (!activeNodeId) {
+    returnToMap();
+    return;
+  }
+
+  console.log('LEVEL COMPLETE:', activeNodeId, activeLevelKey);
+
+  resetActiveLevelState();
+  returnToMap();
+}
+
+// =====================================================
+// ✅ DIRECT LEVEL LAUNCH (DEBUG)
+// =====================================================
+function startLevelDirect(levelKey){
+// ✅ Debug level → disable XP by default
+DEBUG_ALLOW_XP = false;
+  const levelDef = LEVELS[levelKey];
+  if (!levelDef) {
+    console.warn('Missing level:', levelKey);
+    return;
+  }
+
+  activeNodeId = null;
+  activeLevelKey = levelKey;
+  activeLevelDef = levelDef;
+
+  levelObjectiveComplete = false;
+  levelTimer = typeof levelDef.duration === 'number' ? levelDef.duration : 0;
+
+  // ✅ start gameplay core systems
+  startRun('game');
+
+  // ✅ apply level setup AFTER reset
+  if (levelDef.setup) {
+    levelDef.setup();
+  }
+}
+
 /* =========================================================
    ✅ MODE / NAV + RUN START (REQUIRED FOR DEBUG MENU)
 ========================================================= */
@@ -2776,24 +4145,15 @@ ui.score.textContent = score;
 asteroids = [];
 asteroidSpawnTimer = 0;
 
+missileDrones = [];
+enemyMissiles = [];
+
   enemies = [];
   powerUps = [];
   powerUpSpawnTimer = 60;
 
   initWeaponState();
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 function setMode(nextMode){
 clearStatHighlights();
@@ -2842,13 +4202,16 @@ document.getElementById('subtitle').classList.add('hideInPerk');
     return;
   }
 
-  if (nextMode === 'debugMenu') {
-    ui.panel.classList.remove('hidden');
-    ui.debugRow.classList.remove('hidden');
-    ui.btnDbgMove.focus();
-    setTimeout(ensureFocus, 0);
-    return;
-  }
+if (nextMode === 'debugMenu') {
+  ui.panel.classList.remove('hidden');
+  ui.debugRow.classList.remove('hidden');
+
+  buildDebugLevelDropdown();
+
+  ui.debugLevelSelect.focus();
+  setTimeout(ensureFocus, 0);
+  return;
+}
 
   if (nextMode === 'paused') {
     ui.panel.classList.remove('hidden');
@@ -2889,6 +4252,7 @@ if (nextMode === 'perk_select') {
 function goToMenu(){
   running = false;
   resetRunState();
+buildMap();
 initStars();
   setMode('menu');
 }
@@ -2896,10 +4260,823 @@ initStars();
 function exitToMenu(){
   goToMenu();
 }
+function returnToMap() {
+  running = false;
+  isPaused = false;
+
+  resetActiveLevelState();
+  setMode('map');
+}
+
+function clearAllEntities() {
+  enemies = [];
+  asteroids = [];
+  missileDrones = [];
+  enemyMissiles = [];
+  powerUps = [];
+  pickups = [];
+  bullets = [];
+}
+
+// =====================================
+// ✅ BARRIER WALL HELPERS
+//     Used by Barrier Gauntlet to spawn
+//     perfectly spaced wall patterns.
+// =====================================
+function spawnBarrierWallAt(y, options = {}) {
+  const wallId = options.wallId ?? 0;
+  const gapLane = options.gapLane ?? Math.floor(Math.random() * GRID_LANES.length);
+  const gapSize = options.gapSize ?? 2;
+  const fall = options.fall ?? 0.4;
+
+  const jobs = PatternRegistry.gapWall({
+    type: 'barrier',
+    y,
+    fall,
+    gapSize,
+    gapLane
+  });
+
+  jobs.forEach((job, index) => {
+    const obj = SpawnRegistry[job.type](job);
+    if (!obj) return;
+
+    obj._wallId = wallId;
+    obj._wallGroup = 'barrier_gauntlet';
+    obj._wallAnchor = (index === 0); // one object serves as the wall tracker
+
+    asteroids.push(obj);
+  });
+}
+
+function getBarrierWallAnchorY(wallId) {
+  const anchor = asteroids.find(a =>
+    a.type === 'barrier' &&
+    a._wallGroup === 'barrier_gauntlet' &&
+    a._wallId === wallId &&
+    a._wallAnchor === true
+  );
+
+  return anchor ? anchor.y : null;
+}
+
+/* =========================================================
+   ✅ LEVEL DEFINITIONS
+========================================================= */
+
+/* =========================================================
+   ✅ LEVEL TYPE POOLS + WEIGHTED RESOLUTION
+========================================================= */
+
+// ✅ encounter type -> pool of level keys
+const LEVEL_TYPE_POOLS = {
+  combat: ['basic_combat'],
+  elite: ['elite_combat'],
+  treasure: ['treasure_room'],
+  event: ['basic_combat'], // placeholder for now
+  boss: ['boss_encounter'],
+  asteroid: ['a_heavy_asteroid_single']
+};
+
+// ✅ pick one entry from weighted encounter list
+function pickWeightedEncounter(encounters) {
+  if (!Array.isArray(encounters) || !encounters.length) return null;
+
+  let total = 0;
+  encounters.forEach(e => {
+    total += Math.max(0, Number(e.weight) || 0);
+  });
+
+  if (total <= 0) return null;
+
+  let roll = Math.random() * total;
+
+  for (const entry of encounters) {
+    const w = Math.max(0, Number(entry.weight) || 0);
+    if (roll < w) return entry;
+    roll -= w;
+  }
+
+  return encounters[encounters.length - 1];
+}
+
+// ✅ pick one level key from a type pool
+function pickLevelFromType(type) {
+  const pool = LEVEL_TYPE_POOLS[type];
+  if (!Array.isArray(pool) || !pool.length) return null;
+
+  const idx = Math.floor(Math.random() * pool.length);
+  return pool[idx];
+}
+
+// ✅ resolve every node once at run start
+function resolveRandomizedNodeLevels() {
+  mapNodes.forEach(node => {
+
+    // ✅ start node does not execute a level
+    if (node.type === 'start') {
+      node.data.resolvedType = 'start';
+      node.data.resolvedLevel = null;
+      return;
+    }
+
+    // ✅ use weighted encounters if present
+    let encounters = Array.isArray(node.data.encounters) && node.data.encounters.length
+      ? node.data.encounters
+      : [{ type: node.type, weight: 100 }]; // ✅ fallback = yes
+
+    const pickedEncounter = pickWeightedEncounter(encounters);
+    const resolvedType = pickedEncounter?.type || node.type;
+    const resolvedLevel = pickLevelFromType(resolvedType);
+
+    node.data.resolvedType = resolvedType;
+    node.data.resolvedLevel = resolvedLevel;
+  });
+}
+
+// =====================================
+// ✅ SPAWN REGISTRY (CREATE ONE OBJECT)
+// =====================================
+const SpawnRegistry = {
+
+barrier: (job = {}) => {
+    return createBarrier(job);
+  },
+
+missile_drone: (job = {}) => {
+    return createMissileDrone(job);
+  },
+
+  asteroid: (job = {}) => {
+    const a = createAsteroid();
+
+    if (job.laneIndex !== undefined) {
+      a.x = GRID_LANES[clampLane(job.laneIndex)];
+    }
+
+    if (job.x !== undefined) a.x = job.x;
+    if (job.y !== undefined) a.y = job.y;
+
+    return a;
+  },
+
+  heavy_asteroid: (job = {}) => {
+    return createHeavyAsteroid({
+      laneIndex: job.laneIndex,
+      x: job.x,
+      y: job.y,
+      w: job.w,
+      h: job.h,
+      hp: job.hp,
+      fall: job.fall,
+      spin: job.spin,
+      breakDelay: job.breakDelay
+    });
+  },
+
+  gem: (job = {}) => {
+    const rarity = job.rarity ?? 'uncommon';
+    const g = createGem(rarity);
+
+    if (job.x !== undefined) g.x = job.x;
+    else g.x = 40 + Math.random() * 520;
+
+    if (job.y !== undefined) g.y = job.y;
+    else g.y = -20;
+
+    return g;
+  }
+};
+
+// =====================================
+// ✅ PATTERN REGISTRY (CREATE MANY JOBS)
+//     Each pattern returns an array of spawn jobs.
+// =====================================
+const PatternRegistry = {
+
+  // -----------------------------------
+  // ✅ FULL WALL (fills all lanes)
+  // -----------------------------------
+  wall: (config = {}) => {
+    const type = config.type ?? 'asteroid';
+    const y = config.y ?? -20;
+
+    return GRID_LANES.map((_, laneIndex) => ({
+      type,
+      laneIndex,
+      y
+    }));
+  },
+
+  // -----------------------------------
+  // ✅ GAP WALL (all lanes except one)
+  // -----------------------------------
+gapWall: (config = {}) => {
+  const type = config.type ?? 'asteroid';
+  const y = config.y ?? -20;
+
+  // ✅ NEW: how many lanes are open
+  const gapSize = Math.max(1, config.gapSize ?? 1);
+
+  // ✅ pick starting lane for the gap
+  const startLane = (
+    config.gapLane !== undefined
+      ? clampLane(config.gapLane)
+      : Math.floor(Math.random() * (GRID_LANES.length - gapSize + 1))
+  );
+
+  const jobs = [];
+
+  for (let laneIndex = 0; laneIndex < GRID_LANES.length; laneIndex++) {
+
+    // ✅ skip lanes inside the gap range
+    if (laneIndex >= startLane && laneIndex < startLane + gapSize) {
+      continue;
+    }
+
+    jobs.push({
+      type,
+      laneIndex,
+      y
+    });
+  }
+
+  return jobs;
+},
+
+  // -----------------------------------
+  // ✅ ZIGZAG
+  // Alternating lanes
+  // -----------------------------------
+  zigzag: (config = {}) => {
+    const type = config.type ?? 'asteroid';
+    const y = config.y ?? -20;
+    const count = config.count ?? 4;
+
+    const startParity = Math.random() < 0.5 ? 0 : 1;
+
+    const candidateLanes = [];
+    for (let i = startParity; i < GRID_LANES.length; i += 2) {
+      candidateLanes.push(i);
+    }
+
+    const jobs = [];
+    for (let i = 0; i < Math.min(count, candidateLanes.length); i++) {
+      jobs.push({
+        type,
+        laneIndex: candidateLanes[i],
+        y: y - i * 36
+      });
+    }
+
+    return jobs;
+  },
+
+  // -----------------------------------
+  // ✅ HEAVY CENTER
+  // Heavy in center, optional supports
+  // -----------------------------------
+  heavyCenter: (config = {}) => {
+    const centerLane = (
+      config.centerLane !== undefined
+        ? clampLane(config.centerLane)
+        : Math.floor(GRID_LANES.length / 2)
+    );
+
+    const jobs = [
+      {
+        type: 'heavy_asteroid',
+        laneIndex: centerLane,
+        y: config.y ?? -80,
+        hp: config.hp ?? 6,
+        fall: config.fall ?? 0.45,
+        w: config.w ?? 80,
+        h: config.h ?? 80,
+        spin: config.spin ?? 0.015,
+        breakDelay: config.breakDelay ?? 0.2
+      }
+    ];
+
+    if (config.supports !== false) {
+      const supportType = config.supportType ?? 'asteroid';
+
+      if (centerLane - 1 >= 0) {
+        jobs.push({
+          type: supportType,
+          laneIndex: centerLane - 1,
+          y: (config.y ?? -80) - 20
+        });
+      }
+
+      if (centerLane + 1 < GRID_LANES.length) {
+        jobs.push({
+          type: supportType,
+          laneIndex: centerLane + 1,
+          y: (config.y ?? -80) - 20
+        });
+      }
+    }
+
+    return jobs;
+  },
+
+  // -----------------------------------
+  // ✅ GEM FIELD
+  // Free-floating, spread across width
+  // -----------------------------------
+  gemField: (config = {}) => {
+    const count = config.count ?? 4;
+    const rarity = config.rarity ?? 'uncommon';
+    const y = config.y ?? -20;
+    const minGap = config.minGap ?? 80;
+
+    const jobs = [];
+    const usedX = [];
+
+    for (let i = 0; i < count; i++) {
+      let x = 40 + Math.random() * 520;
+      let safety = 0;
+
+      while (usedX.some(px => Math.abs(px - x) < minGap) && safety < 20) {
+        x = 40 + Math.random() * 520;
+        safety++;
+      }
+
+      usedX.push(x);
+
+      jobs.push({
+        type: 'gem',
+        x,
+        y: y - i * 10,
+        rarity,
+        free: true
+      });
+    }
+
+    return jobs;
+  }
+};
+
+// =====================================
+// ✅ SPAWN MANAGER (GENERIC)
+// =====================================
+const SpawnManager = {
+
+  rules: [],
+  timers: [],
+  laneCooldowns: [],
+
+  init(spawnRules = []) {
+    this.rules = Array.isArray(spawnRules) ? spawnRules : [];
+    this.timers = this.rules.map(() => 0);
+    this.laneCooldowns = new Array(GRID_LANES.length).fill(0);
+  },
+
+  update(dt) {
+
+    // ✅ reduce lane cooldowns
+    for (let i = 0; i < this.laneCooldowns.length; i++) {
+      this.laneCooldowns[i] -= dt;
+    }
+
+    // ✅ process rules
+    for (let i = 0; i < this.rules.length; i++) {
+      const rule = this.rules[i];
+if (Number.isFinite(rule.maxAlive)) {
+        const aliveCount = this.countAliveOfType(rule.type);
+        if (aliveCount >= rule.maxAlive) {
+          this.timers[i] = this.roll(rule.min, rule.max);
+          continue;
+        }
+      }
+
+      this.timers[i] -= dt;
+      if (this.timers[i] > 0) continue;
+
+      // ---------------------------------
+      // ✅ SINGLE OBJECT RULE
+      // ---------------------------------
+      if (!rule.pattern) {
+        const job = this.buildSingleJob(rule);
+        if (job) {
+          this.executeJob(job, rule);
+        }
+      }
+
+      // ---------------------------------
+      // ✅ PATTERN RULE
+      // ---------------------------------
+      else {
+        const patternFunc = PatternRegistry[rule.pattern];
+        if (patternFunc) {
+          const jobs = patternFunc(rule.config || {});
+          jobs.forEach(job => this.executeJob(job, rule));
+        }
+      }
+
+      // reset timer after spawn attempt
+      this.timers[i] = this.roll(rule.min, rule.max);
+    }
+  },
+
+  buildSingleJob(rule) {
+    const job = {
+      type: rule.type,
+      y: rule.y
+    };
+
+    if (!rule.free) {
+      const lane = this.getFreeLane();
+      if (lane === null) return null;
+      job.laneIndex = lane;
+    } else {
+      job.x = rule.x;
+    }
+
+    if (rule.config) {
+      Object.assign(job, rule.config);
+    }
+
+    return job;
+  },
+
+  executeJob(job, rule = {}) {
+    if (!job || !job.type) return;
+
+    // ✅ apply lane cooldown for lane-based spawns
+    if (job.laneIndex !== undefined) {
+      const lane = clampLane(job.laneIndex);
+
+      // If lane is cooling down and rule wants spacing, skip
+      if (!rule.ignoreCooldown && this.laneCooldowns[lane] > 0) {
+        return;
+      }
+
+      this.laneCooldowns[lane] = rule.cooldown ?? 0.8;
+    }
+
+    const spawnFunc = SpawnRegistry[job.type];
+    if (!spawnFunc) return;
+
+    const obj = spawnFunc(job);
+    if (!obj) return;
+
+    this.addToWorld(obj);
+  },
+
+
+
+addToWorld(obj) {
+  if (!obj) return;
+
+  if (
+    obj.type === 'asteroid' ||
+    obj.type === 'heavy_asteroid' ||
+    obj.type === 'barrier'
+  ) {
+    asteroids.push(obj);
+    return;
+  }
+
+  if (obj.type === 'gem') {
+    pickups.push(obj);
+    return;
+  }
+
+  if (obj.type === 'missile_drone') {
+    missileDrones.push(obj);
+    return;
+  }
+
+  if (obj.type === 'enemy') {
+    enemies.push(obj);
+    return;
+  }
+},
+
+  getFreeLane() {
+    const valid = [];
+
+    for (let i = 0; i < this.laneCooldowns.length; i++) {
+      if (this.laneCooldowns[i] <= 0) {
+        valid.push(i);
+      }
+    }
+
+    if (!valid.length) return null;
+    return valid[Math.floor(Math.random() * valid.length)];
+  },
+
+countAliveOfType(type) {
+    if (type === 'missile_drone') return missileDrones.length;
+    if (type === 'gem') return pickups.filter(p => p.type === 'gem').length;
+    if (type === 'enemy') return enemies.length;
+
+    if (
+      type === 'asteroid' ||
+      type === 'heavy_asteroid' ||
+      type === 'barrier'
+    ) {
+      return asteroids.filter(a => a.type === type).length;
+    }
+
+    return 0;
+  },
+
+
+roll(min, max) {
+    const a = Number.isFinite(min) ? min : 1;
+    const b = Number.isFinite(max) ? max : a;
+    return a + Math.random() * Math.max(0, b - a);
+  }
+};
+
+/* =================================================================================================================================================================================================================================
+   ✅ LEVELS
+==================================================================================================================================================================================================================================== */
+const LEVELS = {
+
+a_Barrier_Gauntlet: {
+  type: 'combat',
+  objective: 'survive_timer',
+  duration: 999999,
+
+  setup: () => {
+    clearAllEntities();
+
+    const level = LEVELS.a_Barrier_Gauntlet;
+
+    // =====================================
+    // ✅ WALL SPACING STATE
+    // =====================================
+    level._wallState = {
+      spawnY: -40,          // where runtime walls enter
+      startY: 220,          // first visible wall at level start
+      wallSpacing: 220,     // ✅ THIS is now the true spacing knob
+      fallSpeed: 0.4,
+      gapSize: 2,
+      preSpawnCount: 3,
+      nextWallId: 1,
+      lastWallId: null
+    };
+
+    const state = level._wallState;
+
+    // =====================================
+    // ✅ PRE-SPAWN WALL STACK
+    // =====================================
+    for (let i = 0; i < state.preSpawnCount; i++) {
+      const wallId = state.nextWallId++;
+      const y = state.startY - i * state.wallSpacing;
+
+      spawnBarrierWallAt(y, {
+        wallId,
+        gapLane: Math.floor(Math.random() * GRID_LANES.length),
+        gapSize: state.gapSize,
+        fall: state.fallSpeed
+      });
+
+      // newest wall = the topmost one
+      state.lastWallId = wallId;
+    }
+  },
+
+  update: (dt) => {
+    const state = activeLevelDef?._wallState;
+    if (!state) return;
+
+    const lastY = getBarrierWallAnchorY(state.lastWallId);
+
+    // if anchor not found, skip this frame
+    if (lastY == null) return;
+
+    // =====================================
+    // ✅ SPAWN NEXT WALL WHEN LAST WALL HAS
+    //     FALLEN FAR ENOUGH
+    // =====================================
+    if (lastY >= state.spawnY + state.wallSpacing) {
+      const wallId = state.nextWallId++;
+
+      spawnBarrierWallAt(state.spawnY, {
+        wallId,
+        gapLane: Math.floor(Math.random() * GRID_LANES.length),
+        gapSize: state.gapSize,
+        fall: state.fallSpeed
+      });
+
+      state.lastWallId = wallId;
+    }
+  },
+
+
+  spawnRules: [
+
+    // ✅ missile drone pressure
+    {
+      type: 'missile_drone',
+      min: 6,
+      max: 9,
+      cooldown: 0.8,
+      maxAlive: 1,
+      config: {
+        hoverY: 110,
+        hp: 3,
+        fireInterval: 2.2,
+        telegraphDuration: 0.45,
+        missileSpeed: 2,
+        moveSpeed: 1,
+        movementMode: 'lane_track'
+      }
+    }
+  ]
+},
+
+  /* ====================================================================================
+  ======================================================================================= */
+
+  Asteroid_Belt: {
+    type: 'combat',
+    objective: 'survive_timer',
+    duration: 40,
+
+    setup: () => {
+      clearAllEntities();
+    },
+
+    spawnRules: [
+
+      // ✅ steady asteroid trickle
+      {
+        type: 'asteroid',
+        min: 0.8,
+        max: 1.2,
+        cooldown: 0.7
+      },
+
+      // ✅ occasional heavy asteroid
+      {
+        type: 'heavy_asteroid',
+        min: 6,
+        max: 9,
+        cooldown: 1.6,
+        config: {
+          hp: 6,
+          fall: 0.45,
+          breakDelay: 0.2
+        }
+      },
+
+      // ✅ occasional free-floating gems
+      {
+        type: 'gem',
+        min: 4,
+        max: 6,
+        free: true,
+        config: {
+          rarity: 'uncommon'
+        }
+      },
+
+      // ✅ designed "find the gap" moments
+      {
+        pattern: 'gapWall',
+        min: 8,
+        max: 12,
+        cooldown: 1.0,
+        config: {
+          type: 'asteroid',
+          y: -20
+        }
+      },
+
+      // ✅ occasional heavy center moment
+      {
+        pattern: 'heavyCenter',
+        min: 12,
+        max: 18,
+        cooldown: 1.6,
+        config: {
+          hp: 6,
+          y: -80,
+          supports: true,
+          supportType: 'asteroid'
+        }
+      },
+
+      // ✅ reward pattern
+      {
+        pattern: 'gemField',
+        min: 10,
+        max: 16,
+        config: {
+          count: 4,
+          rarity: 'rare',
+          minGap: 90
+        }
+      }
+    ]
+  },
+
+  /* ====================================================================================
+  ======================================================================================= */
+
+  debug_heavy_asteroid: {
+    type: 'combat',
+    objective: 'survive_timer',
+    duration: 90,
+    setup: () => {
+
+      clearAllEntities();
+
+      const a = createHeavyAsteroid({
+        laneIndex: Math.floor(GRID_LANES.length / 2),
+        w: 80,
+        h: 80,
+        hp: 6,
+        fall: 0.5,
+        spin: 0.015,
+        breakDelay: 0.2,
+        y: -80
+      });
+
+      asteroids.push(a);
+    }
+  },
+
+  /* ====================================================================================
+  ======================================================================================= */
+
+  basic_combat: {
+    type: 'combat',
+    objective: 'kill_all_enemies',
+    noAutoAsteroidSpawn: true,
+
+    setup: () => {
+      clearAllEntities();
+
+      for (let i = 0; i < 5; i++) {
+        const a = createAsteroid();
+        a.y = -20 - i * 70;
+        asteroids.push(a);
+      }
+    }
+  },
+
+  /* ====================================================================================
+  ======================================================================================= */
+
+  elite_combat: {
+    type: 'elite',
+    objective: 'kill_all_enemies',
+    setup: () => {
+      enemies = [];
+      asteroids = [];
+      spawnEnemies();
+
+      enemyRows.forEach(r => {
+        r.idleTime *= 0.6;
+      });
+    }
+  },
+
+  /* ====================================================================================
+  ======================================================================================= */
+
+  treasure_room: {
+    type: 'treasure',
+    objective: 'objective_complete',
+    setup: () => {
+      generatePerkChoices();
+
+      isPaused = true;
+      previousMode = 'map';
+      setMode('perk_select');
+
+      markLevelObjectiveComplete();
+    }
+  },
+
+  /* ====================================================================================
+  ======================================================================================= */
+
+  boss_encounter: {
+    type: 'boss',
+    objective: 'kill_all_enemies',
+    setup: () => {
+      enemies = [];
+      asteroids = [];
+      spawnEnemies();
+
+      enemenemyRows?.forEach(r => { r.idleTime *= 0.5; });yRows.forEach(r => {
+        r.idleTime *= 0.5;
+      });
+    }
+  }
+};
 
 function startRun(runMode){
   running = true;
-
+SpawnManager.init(activeLevelDef?.spawnRules || []);
   resetRunState();
 
 if (runMode === 'debug_asteroid') {
@@ -2910,9 +5087,6 @@ if (runMode === 'game') {
 }
 
   centerGamma = rawGamma;
-
-  if (runMode === 'game') spawnEnemies();
-  if (runMode === 'debug_enemy') spawnEnemies();
 
   if (
     runMode === 'debug_power' ||
@@ -2932,10 +5106,6 @@ previousMode = runMode
 let lastTime = performance.now();
 let lastRuntimeError = "";
 
-
-
-
-
 function update(now){
   try {
     // ✅ REAL dt in seconds
@@ -2953,8 +5123,9 @@ function update(now){
       perkTimeline += dt;
     }
 
-    updateStars(dt);
-    updateXPBar(dt);
+updateStars(dt);
+updateXPBar(dt);
+updateMapCursor(dt);
 
     // =====================================
     // ✅ PERK CINEMATIC
@@ -3029,53 +5200,78 @@ function update(now){
 // =====================================
     // ✅ GAMEPLAY UPDATES (MODE GATED)
     // =====================================
-    if (running && !isPaused) {
+if (running && !isPaused) {
+if (activeLevelDef?.spawnRules) {
+  SpawnManager.update(dt);
+}
 
-      updateWeapons(dt);
+  // ✅ level timer countdown (for survive_timer objective)
+  if (activeLevelDef && activeLevelDef.objective === 'survive_timer') {
+    levelTimer -= dt;
+    if (levelTimer < 0) levelTimer = 0;
+  }
 
-      // ✅ ENEMIES ONLY
-      if (mode === 'game' || mode === 'debug_enemy') {
-        updateEnemies(dt);
-        handleBulletsVsEnemies();
-      }
+// ✅ LEVEL-SPECIFIC UPDATE (CUSTOM LOGIC)
+if (activeLevelDef && typeof activeLevelDef.update === 'function') {
+  activeLevelDef.update(dt);
+}
 
-      // ✅ ASTEROIDS ONLY
-      if (mode === 'game' || mode === 'debug_asteroid') {
-        updateAsteroids(dt);
-      }
+  updateWeapons(dt);
+updateMissileDrones(dt);
 
-      // ✅ POWERUPS ONLY
-      if (
-        mode === 'game' ||
-        mode === 'debug_power' ||
-        mode === 'debug_vel' ||
-        mode === 'debug_cap' ||
-        mode === 'debug_reload'
-      ) {
-        updatePowerUps(dt);
-      }
+  // ✅ ENEMIES ONLY
+  if (mode === 'game' || mode === 'debug_enemy') {
+    updateEnemies(dt);
+    handleBulletsVsEnemies();
+  }
 
-      // ✅ PICKUPS ONLY IN FULL GAME
-      if (mode === 'game') {
-        updatePickups(dt);
-      }
+  // ✅ ASTEROIDS ONLY
+  if (mode === 'game' || mode === 'debug_asteroid') {
+    updateAsteroids(dt);
+  }
 
-      // ✅ PICKUP BURSTS
-      pickupBursts.forEach(b => {
-        b.x += b.vx * dt * 60;
-        b.y += b.vy * dt * 60;
-        b.life -= dt;
-      });
-      pickupBursts = pickupBursts.filter(b => b.life > 0);
+  // ✅ POWERUPS ONLY
+  if (
+    mode === 'game' ||
+    mode === 'debug_power' ||
+    mode === 'debug_vel' ||
+    mode === 'debug_cap' ||
+    mode === 'debug_reload'
+  ) {
+    updatePowerUps(dt);
+  }
 
-      // ✅ XP FLOAT TEXT
-      xpTexts.forEach(t => {
-        t.y += t.vy * dt * 60;
-        t.x += t.drift * dt * 60;
-        t.life -= dt;
-      });
-      xpTexts = xpTexts.filter(t => t.life > 0);
-    }
+  // ✅ PICKUPS ONLY IN FULL GAME
+  if (mode === 'game') {
+    updatePickups(dt);
+  }
+
+  // ✅ PICKUP BURSTS
+  pickupBursts.forEach(b => {
+    b.x += b.vx * dt * 60;
+    b.y += b.vy * dt * 60;
+    b.life -= dt;
+  });
+  pickupBursts = pickupBursts.filter(b => b.life > 0);
+
+  // ✅ XP FLOAT TEXT
+  xpTexts.forEach(t => {
+    t.y += t.vy * dt * 60;
+    t.x += t.drift * dt * 60;
+    t.life -= dt;
+  });
+  xpTexts = xpTexts.filter(t => t.life > 0);
+
+  // ✅ REAL LEVEL COMPLETION CHECK
+  if (activeLevelDef && isActiveLevelComplete()) {
+    completeActiveLevel();
+    refreshStatUI();
+    renderTopUI();
+    draw();
+    requestAnimationFrame(update);
+    return;
+  }
+}
 
     // ✅ UI + DRAW
     refreshStatUI();
@@ -3093,6 +5289,7 @@ function update(now){
 }
 
 // ✅ start loop ONCE (delete any other requestAnimationFrame(update) lines elsewhere)
+buildMap();              // ✅ BUILD MAP ON INITIAL LOAD
 initStars();             // ✅ create stars BEFORE first frame
 setMode('menu');         // ✅ set UI first
 requestAnimationFrame(update); // ✅ THEN start loop
@@ -3157,6 +5354,30 @@ function renderTopUI() {
   `;
 }
 
+// =====================================================
+// ✅ BUILD DEBUG LEVEL DROPDOWN
+// =====================================================
+function buildDebugLevelDropdown() {
+
+  const select = ui.debugLevelSelect;
+  if (!select) return;
+
+  select.innerHTML = '';
+
+  const levelKeys = Object.keys(LEVELS).sort((a, b) => a.localeCompare(b));
+
+  levelKeys.forEach(levelKey => {
+    const option = document.createElement('option');
+    option.value = levelKey;
+    option.textContent = levelKey;
+    select.appendChild(option);
+  });
+
+  if (levelKeys.length > 0) {
+    select.value = levelKeys[0];
+  }
+}
+
 /* =========================================================
    ✅ UI WIRING
 ========================================================= */
@@ -3177,7 +5398,9 @@ ui.btnExit.addEventListener('click', () => {
   exitToMenu();
 });
 
-ui.btnStart.addEventListener('click', () => startRun('game'));
+ui.btnStart.addEventListener('click', () => {
+  enterMapMode();
+});
 ui.perk1.addEventListener('click', () => pickPerk(0));
 ui.perk2.addEventListener('click', () => pickPerk(1));
 ui.perk3.addEventListener('click', () => pickPerk(2));
@@ -3185,20 +5408,23 @@ ui.perk3.addEventListener('click', () => pickPerk(2));
 ui.btnReroll.addEventListener('click', rerollPerks);
 
 // ✅ Debug menu open
-ui.btnDebug.addEventListener('click', () => setMode('debugMenu'));
+ui.btnDebug.addEventListener('click', () => {
+  if (!DEV_MODE) return;
+  setMode('debugMenu');
+});
 
-ui.btnDbgMove.addEventListener('click', () => startRun('debug_move'));
-ui.btnDbgWeapon.addEventListener('click', () => startRun('debug_weapon'));
-ui.btnDbgEnemy.addEventListener('click', () => startRun('debug_enemy'));
-ui.btnDbgAsteroid.addEventListener('click', () => startRun('debug_asteroid'));
+ui.btnDbgLaunch.addEventListener('click', () => {
+  const selectedLevel = ui.debugLevelSelect.value;
+  if (!selectedLevel) return;
 
-ui.btnDbgPower.addEventListener('click', () => startRun('debug_power'));
-ui.btnDbgVel.addEventListener('click', () => startRun('debug_vel'));
-ui.btnDbgCap.addEventListener('click', () => startRun('debug_cap'));
-ui.btnDbgReload.addEventListener('click', () => startRun('debug_reload'));
+  DEBUG_ALLOW_XP = false;
+  ui.status.textContent = 'DEBUG: XP OFF (press ` to enable)';
 
+  startLevelDirect(selectedLevel);
+});
 
 ui.btnDbgBack.addEventListener('click', () => setMode('menu'));
+
 
 </script>
 
